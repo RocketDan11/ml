@@ -13,56 +13,99 @@ import numpy as np
 
 warnings.filterwarnings("ignore", message="TypedStorage is deprecated")
 
-# AlexNet- CIFAR-100
-class AlexNet(nn.Module):
+# VGG16 for CIFAR-100
+class VGG16(nn.Module):
     def __init__(self, num_classes=100):
-        super(AlexNet, self).__init__()
+        super(VGG16, self).__init__()
+        # Block 1
         self.features = nn.Sequential(
-            # Conv1: input [3, 32, 32] -> output [64, 32, 32]
-            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
+            # Block 1 (64 channels)
+            nn.Conv2d(3, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # output: [64, 16, 16]
-            
-            # Conv2: output [192, 16, 16]
-            nn.Conv2d(64, 192, kernel_size=3, padding=1),
-            nn.BatchNorm2d(192),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # output: [192, 8, 8]
+            nn.MaxPool2d(kernel_size=2, stride=2),
             
-            # Conv3: output [384, 8, 8]
-            nn.Conv2d(192, 384, kernel_size=3, padding=1),
-            nn.BatchNorm2d(384),
+            # Block 2 (128 channels)
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
             
-            # Conv4: output [256, 8, 8]
-            nn.Conv2d(384, 256, kernel_size=3, padding=1),
+            # Block 3 (256 channels)
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
-            
-            # Conv5: output [256, 8, 8] then pool to [256, 4, 4]
             nn.Conv2d(256, 256, kernel_size=3, padding=1),
             nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Block 4 (512 channels)
+            nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Block 5 (512 channels)
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2)
         )
         
-        # Classifier: Adjusted for a feature map size of 4x4 after pooling.
+        # Classifier
         self.classifier = nn.Sequential(
             nn.Dropout(p=0.5),
-            nn.Linear(256 * 4 * 4, 4096),
+            nn.Linear(512 * 1 * 1, 4096),  # CIFAR-100 images are 32x32, after 5 max-pooling layers: 1x1
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.5),
             nn.Linear(4096, 4096),
             nn.ReLU(inplace=True),
             nn.Linear(4096, num_classes)
         )
+        
+        # Initialize weights
+        self._initialize_weights()
     
     def forward(self, x):
         x = self.features(x)
         x = x.view(x.size(0), -1)  # Flatten
         x = self.classifier(x)
         return x
+    
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                nn.init.constant_(m.bias, 0)
 
 # Data transforms for training and testing
 transform_train = transforms.Compose([
@@ -86,7 +129,7 @@ testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False,
 
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = AlexNet(num_classes=100).to(device)
+model = VGG16(num_classes=100).to(device)
 
 # After model definition but before training loop
 total_params = sum(p.numel() for p in model.parameters())
