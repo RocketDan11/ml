@@ -1,4 +1,4 @@
-## CIFAR-100
+## VGG Net ->CIFAR-100
 
 import torch
 import torch.nn as nn
