@@ -4,6 +4,9 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 
+#important to note hidden state is NOT the size of the sequence length
+#but the size of the hidden state passed to the next layer
+
 class SimpleRNN(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, output_size):
         """
