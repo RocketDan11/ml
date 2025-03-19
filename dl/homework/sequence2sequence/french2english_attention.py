@@ -4,93 +4,91 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LinearSegmentedColormap
+
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)
-
-
-# English to French translation dataset
-english_to_french = [
-    ("I am cold", "J'ai froid"),
-    ("You are tired", "Tu es fatigué"),
-    ("He is hungry", "Il a faim"),
-    ("She is happy", "Elle est heureuse"),
-    ("We are friends", "Nous sommes amis"),
-    ("They are students", "Ils sont étudiants"),
-    ("The cat is sleeping", "Le chat dort"),
-    ("The sun is shining", "Le soleil brille"),
-    ("We love music", "Nous aimons la musique"),
-    ("She speaks French fluently", "Elle parle français couramment"),
-    ("He enjoys reading books", "Il aime lire des livres"),
-    ("They play soccer every weekend", "Ils jouent au football chaque week-end"),
-    ("The movie starts at 7 PM", "Le film commence à 19 heures"),
-    ("She wears a red dress", "Elle porte une robe rouge"),
-    ("We cook dinner together", "Nous cuisinons le dîner ensemble"),
-    ("He drives a blue car", "Il conduit une voiture bleue"),
-    ("They visit museums often", "Ils visitent souvent des musées"),
-    ("The restaurant serves delicious food", "Le restaurant sert une délicieuse cuisine"),
-    ("She studies mathematics at university", "Elle étudie les mathématiques à l'université"),
-    ("We watch movies on Fridays", "Nous regardons des films le vendredi"),
-    ("He listens to music while jogging", "Il écoute de la musique en faisant du jogging"),
-    ("They travel around the world", "Ils voyagent autour du monde"),
-    ("The book is on the table", "Le livre est sur la table"),
-    ("She dances gracefully", "Elle danse avec grâce"),
-    ("We celebrate birthdays with cake", "Nous célébrons les anniversaires avec un gâteau"),
-    ("He works hard every day", "Il travaille dur tous les jours"),
-    ("They speak different languages", "Ils parlent différentes langues"),
-    ("The flowers bloom in spring", "Les fleurs fleurissent au printemps"),
-    ("She writes poetry in her free time", "Elle écrit de la poésie pendant son temps libre"),
-    ("We learn something new every day", "Nous apprenons quelque chose de nouveau chaque jour"),
-    ("The dog barks loudly", "Le chien aboie bruyamment"),
-    ("He sings beautifully", "Il chante magnifiquement"),
-    ("They swim in the pool", "Ils nagent dans la piscine"),
-    ("The birds chirp in the morning", "Les oiseaux gazouillent le matin"),
-    ("She teaches English at school", "Elle enseigne l'anglais à l'école"),
-    ("We eat breakfast together", "Nous prenons le petit déjeuner ensemble"),
-    ("He paints landscapes", "Il peint des paysages"),
-    ("They laugh at the joke", "Ils rient de la blague"),
-    ("The clock ticks loudly", "L'horloge tic-tac bruyamment"),
-    ("She runs in the park", "Elle court dans le parc"),
-    ("We travel by train", "Nous voyageons en train"),
-    ("He writes a letter", "Il écrit une lettre"),
-    ("They read books at the library", "Ils lisent des livres à la bibliothèque"),
-    ("The baby cries", "Le bébé pleure"),
-    ("She studies hard for exams", "Elle étudie dur pour les examens"),
-    ("We plant flowers in the garden", "Nous plantons des fleurs dans le jardin"),
-    ("He fixes the car", "Il répare la voiture"),
-    ("They drink coffee in the morning", "Ils boivent du café le matin"),
-    ("The sun sets in the evening", "Le soleil se couche le soir"),
-    ("She dances at the party", "Elle danse à la fête"),
-    ("We play music at the concert", "Nous jouons de la musique au concert"),
-    ("He cooks dinner for his family", "Il cuisine le dîner pour sa famille"),
-    ("They study French grammar", "Ils étudient la grammaire française"),
-    ("The rain falls gently", "La pluie tombe doucement"),
-    ("She sings a song", "Elle chante une chanson"),
-    ("We watch a movie together", "Nous regardons un film ensemble"),
-    ("He sleeps deeply", "Il dort profondément"),
-    ("They travel to Paris", "Ils voyagent à Paris"),
-    ("The children play in the park", "Les enfants jouent dans le parc"),
-    ("She walks along the beach", "Elle se promène le long de la plage"),
-    ("We talk on the phone", "Nous parlons au téléphone"),
-    ("He waits for the bus", "Il attend le bus"),
-    ("They visit the Eiffel Tower", "Ils visitent la tour Eiffel"),
-    ("The stars twinkle at night", "Les étoiles scintillent la nuit"),
-    ("She dreams of flying", "Elle rêve de voler"),
-    ("We work in the office", "Nous travaillons au bureau"),
-    ("He studies history", "Il étudie l'histoire"),
-    ("They listen to the radio", "Ils écoutent la radio"),
-    ("The wind blows gently", "Le vent souffle doucement"),
-    ("She swims in the ocean", "Elle nage dans l'océan"),
-    ("We dance at the wedding", "Nous dansons au mariage"),
-    ("He climbs the mountain", "Il gravit la montagne"),
-    ("They hike in the forest", "Ils font de la randonnée dans la forêt"),
-    ("The cat meows loudly", "Le chat miaule bruyamment"),
-    ("She paints a picture", "Elle peint un tableau"),
-    ("We build a sandcastle", "Nous construisons un château de sable"),
-    ("He sings in the choir", "Il chante dans le chœur")
-]
      
+
+# French to English translation dataset
+french_to_english = [
+    ("J'ai froid", "I am cold"),
+    ("Tu es fatigué", "You are tired"),
+    ("Il a faim", "He is hungry"),
+    ("Elle est heureuse", "She is happy"),
+    ("Nous sommes amis", "We are friends"),
+    ("Ils sont étudiants", "They are students"),
+    ("Le chat dort", "The cat is sleeping"),
+    ("Le soleil brille", "The sun is shining"),
+    ("Nous aimons la musique", "We love music"),
+    ("Elle parle français couramment", "She speaks French fluently"),
+    ("Il aime lire des livres", "He enjoys reading books"),
+    ("Ils jouent au football chaque week-end", "They play soccer every weekend"),
+    ("Le film commence à 19 heures", "The movie starts at 7 PM"),
+    ("Elle porte une robe rouge", "She wears a red dress"),
+    ("Nous cuisinons le dîner ensemble", "We cook dinner together"),
+    ("Il conduit une voiture bleue", "He drives a blue car"),
+    ("Ils visitent souvent des musées", "They visit museums often"),
+    ("Le restaurant sert une délicieuse cuisine", "The restaurant serves delicious food"),
+    ("Elle étudie les mathématiques à l'université", "She studies mathematics at university"),
+    ("Nous regardons des films le vendredi", "We watch movies on Fridays"),
+    ("Il écoute de la musique en faisant du jogging", "He listens to music while jogging"),
+    ("Ils voyagent autour du monde", "They travel around the world"),
+    ("Le livre est sur la table", "The book is on the table"),
+    ("Elle danse avec grâce", "She dances gracefully"),
+    ("Nous célébrons les anniversaires avec un gâteau", "We celebrate birthdays with cake"),
+    ("Il travaille dur tous les jours", "He works hard every day"),
+    ("Ils parlent différentes langues", "They speak different languages"),
+    ("Les fleurs fleurissent au printemps", "The flowers bloom in spring"),
+    ("Elle écrit de la poésie pendant son temps libre", "She writes poetry in her free time"),
+    ("Nous apprenons quelque chose de nouveau chaque jour", "We learn something new every day"),
+    ("Le chien aboie bruyamment", "The dog barks loudly"),
+    ("Il chante magnifiquement", "He sings beautifully"),
+    ("Ils nagent dans la piscine", "They swim in the pool"),
+    ("Les oiseaux gazouillent le matin", "The birds chirp in the morning"),
+    ("Elle enseigne l'anglais à l'école", "She teaches English at school"),
+    ("Nous prenons le petit déjeuner ensemble", "We eat breakfast together"),
+    ("Il peint des paysages", "He paints landscapes"),
+    ("Ils rient de la blague", "They laugh at the joke"),
+    ("L'horloge tic-tac bruyamment", "The clock ticks loudly"),
+    ("Elle court dans le parc", "She runs in the park"),
+    ("Nous voyageons en train", "We travel by train"),
+    ("Il écrit une lettre", "He writes a letter"),
+    ("Ils lisent des livres à la bibliothèque", "They read books at the library"),
+    ("Le bébé pleure", "The baby cries"),
+    ("Elle étudie dur pour les examens", "She studies hard for exams"),
+    ("Nous plantons des fleurs dans le jardin", "We plant flowers in the garden"),
+    ("Il répare la voiture", "He fixes the car"),
+    ("Ils boivent du café le matin", "They drink coffee in the morning"),
+    ("Le soleil se couche le soir", "The sun sets in the evening"),
+    ("Elle danse à la fête", "She dances at the party"),
+    ("Nous jouons de la musique au concert", "We play music at the concert"),
+    ("Il cuisine le dîner pour sa famille", "He cooks dinner for his family"),
+    ("Ils étudient la grammaire française", "They study French grammar"),
+    ("La pluie tombe doucement", "The rain falls gently"),
+    ("Elle chante une chanson", "She sings a song"),
+    ("Nous regardons un film ensemble", "We watch a movie together"),
+    ("Il dort profondément", "He sleeps deeply"),
+    ("Ils voyagent à Paris", "They travel to Paris"),
+    ("Les enfants jouent dans le parc", "The children play in the park"),
+    ("Elle se promène le long de la plage", "She walks along the beach"),
+    ("Nous parlons au téléphone", "We talk on the phone"),
+    ("Il attend le bus", "He waits for the bus"),
+    ("Ils visitent la tour Eiffel", "They visit the Eiffel Tower"),
+    ("Les étoiles scintillent la nuit", "The stars twinkle at night"),
+    ("Elle rêve de voler", "She dreams of flying"),
+    ("Nous travaillons au bureau", "We work in the office"),
+    ("Il étudie l'histoire", "He studies history"),
+    ("Ils écoutent la radio", "They listen to the radio"),
+    ("Le vent souffle doucement", "The wind blows gently"),
+    ("Elle nage dans l'océan", "She swims in the ocean"),
+    ("Nous dansons au mariage", "We dance at the wedding"),
+    ("Il gravit la montagne", "He climbs the mountain"),
+    ("Ils font de la randonnée dans la forêt", "They hike in the forest"),
+    ("Le chat miaule bruyamment", "The cat meows loudly"),
+    ("Elle peint un tableau", "She paints a picture"),
+    ("Nous construisons un château de sable", "We build a sandcastle"),
+    ("Il chante dans le chœur", "He sings in the choir")
+]
 
 # Special tokens for the start and end of sequences
 SOS_token = 0  # Start Of Sequence Token
@@ -98,7 +96,7 @@ EOS_token = 1  # End Of Sequence Token
 
 # Preparing the word to index mapping and vice versa
 word_to_index = {"SOS": SOS_token, "EOS": EOS_token}
-for pair in english_to_french:
+for pair in french_to_english:  # Assuming you have a dataset named french_to_english
     for word in pair[0].split() + pair[1].split():
         if word not in word_to_index:
             word_to_index[word] = len(word_to_index)
@@ -123,10 +121,13 @@ class TranslationDataset(Dataset):
         target_indices = [self.word_to_index[word] for word in target_sentence.split()] + [EOS_token]
         return torch.tensor(input_indices, dtype=torch.long), torch.tensor(target_indices, dtype=torch.long)
 
-# Creating a DataLoader to batch and shuffle the dataset
+# Creating DataLoaders for training and validation
 max_length = 14
-translation_dataset = TranslationDataset(english_to_french, word_to_index)
-dataloader = DataLoader(translation_dataset, batch_size=1, shuffle=True)
+translation_dataset = TranslationDataset(french_to_english, word_to_index)
+
+# Use the entire dataset for both training and validation
+train_dataloader = DataLoader(translation_dataset, batch_size=1, shuffle=True)
+val_dataloader = DataLoader(translation_dataset, batch_size=1, shuffle=False)
 
 class Encoder(nn.Module):
     """The Encoder part of the seq2seq model."""
@@ -251,99 +252,78 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 # Negative Log Likelihood Loss function for calculating loss
 criterion = nn.NLLLoss()
 
-def evaluate(encoder, decoder, dataloader, criterion):
-    # Switch model to evaluation mode
-    encoder.eval()
-    decoder.eval()
-
-    total_loss = 0
-    correct_predictions = 0
-
-    # No gradient calculation
-    with torch.no_grad():
-        for input_tensor, target_tensor in dataloader:
-            # Move tensors to the correct device
-            input_tensor = input_tensor[0].to(device)
-            target_tensor = target_tensor[0].to(device)
-
-            encoder_hidden = encoder.initHidden()
-
-            input_length = input_tensor.size(0)
-            target_length = target_tensor.size(0)
-
-            loss = 0
-
-            # Encoding step
-            encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
-            for ei in range(input_length):
-                encoder_output, encoder_hidden = encoder(input_tensor[ei].unsqueeze(0), encoder_hidden)
-                encoder_outputs[ei] = encoder_output[0, 0]
-
-            # Decoding step
-            decoder_input = torch.tensor([[SOS_token]], device=device)
-            decoder_hidden = encoder_hidden
-
-            predicted_indices = []
-
-            for di in range(target_length):
-                decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
-                topv, topi = decoder_output.topk(1)
-                predicted_indices.append(topi.item())
-                decoder_input = topi.squeeze().detach()
-
-                loss += criterion(decoder_output, target_tensor[di].unsqueeze(0))
-                if decoder_input.item() == EOS_token:
-                    break
-
-            # Calculate loss and check if prediction is correct
-            total_loss += loss.item() / target_length
-            if predicted_indices == target_tensor.tolist():
-                correct_predictions += 1
-
-        # Calculate average loss and accuracy
-        average_loss = total_loss / len(dataloader)
-        accuracy = correct_predictions / len(dataloader)
-        
-        return average_loss, accuracy
-
 # Set number of epochs for training
-n_epochs = 45
+n_epochs = 100
 
 # Lists to store training and validation losses
 train_losses = []
 val_losses = []
-val_accuracies = []
 
 # Training loop
 for epoch in range(n_epochs):
-    # Set models to training mode
+    # Training phase
     encoder.train()
     decoder.train()
+    total_train_loss = 0
     
-    total_loss = 0
-    for input_tensor, target_tensor in dataloader:
+    for input_tensor, target_tensor in train_dataloader:
         # Move tensors to the correct device
         input_tensor = input_tensor[0].to(device)
         target_tensor = target_tensor[0].to(device)
 
         # Perform a single training step and update total loss
         loss = train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
-        total_loss += loss
+        total_train_loss += loss
     
     # Calculate average training loss for this epoch
-    avg_train_loss = total_loss / len(dataloader)
+    avg_train_loss = total_train_loss / len(train_dataloader)
     train_losses.append(avg_train_loss)
     
-    # Evaluate on validation set (using the same data for simplicity)
-    val_loss, val_accuracy = evaluate(encoder, decoder, dataloader, criterion)
-    val_losses.append(val_loss)
-    val_accuracies.append(val_accuracy)
+    # Validation phase
+    encoder.eval()
+    decoder.eval()
+    total_val_loss = 0
     
-    # Print loss every 10 epochs
-    if epoch % 10 == 0:
-       print(f'Epoch {epoch}, Train Loss: {avg_train_loss}, Val Loss: {val_loss}, Val Accuracy: {val_accuracy}')
+    with torch.no_grad():
+        for input_tensor, target_tensor in val_dataloader:
+            # Move tensors to the correct device
+            input_tensor = input_tensor[0].to(device)
+            target_tensor = target_tensor[0].to(device)
+            
+            # Calculate validation loss
+            encoder_hidden = encoder.initHidden()
+            input_length = input_tensor.size(0)
+            target_length = target_tensor.size(0)
+            
+            # Encoding step
+            encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
+            for ei in range(input_length):
+                encoder_output, encoder_hidden = encoder(input_tensor[ei].unsqueeze(0), encoder_hidden)
+                encoder_outputs[ei] = encoder_output[0, 0]
+            
+            # Decoding step
+            decoder_input = torch.tensor([[SOS_token]], device=device)
+            decoder_hidden = encoder_hidden
+            loss = 0
+            
+            for di in range(target_length):
+                decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
+                topv, topi = decoder_output.topk(1)
+                decoder_input = topi.squeeze().detach()
+                
+                loss += criterion(decoder_output, target_tensor[di].unsqueeze(0))
+                if decoder_input.item() == EOS_token:
+                    break
+            
+            total_val_loss += loss.item() / target_length
+    
+    # Calculate average validation loss for this epoch
+    avg_val_loss = total_val_loss / len(val_dataloader)
+    val_losses.append(avg_val_loss)
 
-
+    # Print progress every 10 epochs
+    if epoch % 10 == 0 or epoch == n_epochs - 1:
+        print(f'Epoch {epoch}, Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
 
 def evaluate_and_show_examples(encoder, decoder, dataloader, criterion, n_examples=10):
     # Switch model to evaluation mode
@@ -408,34 +388,17 @@ def evaluate_and_show_examples(encoder, decoder, dataloader, criterion, n_exampl
         print(f'Evaluation Loss: {average_loss}, Accuracy: {accuracy}')
 
 # Visualize training and validation loss
-plt.figure(figsize=(12, 5))
-
-# Plot training and validation loss
-plt.subplot(1, 2, 1)
-plt.plot(train_losses, label='Training Loss')
-plt.plot(val_losses, label='Validation Loss')
+plt.figure(figsize=(10, 6))
+plt.plot(range(1, n_epochs + 1), train_losses, label='Training Loss')
+plt.plot(range(1, n_epochs + 1), val_losses, label='Validation Loss')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
 plt.title('Training and Validation Loss')
 plt.legend()
-
-# Plot validation accuracy
-plt.subplot(1, 2, 2)
-plt.plot(val_accuracies, label='Validation Accuracy')
-plt.xlabel('Epochs')
-plt.ylabel('Accuracy')
-plt.title('Validation Accuracy')
-plt.legend()
-
-plt.tight_layout()
-plt.savefig('training_validation_metrics.png')
+plt.grid(True)
+plt.savefig('french2english_attention_loss.png')
 plt.show()
 
-# Report final validation accuracy
-final_val_loss, final_val_accuracy = val_losses[-1], val_accuracies[-1]
-print(f'\nFinal Validation Loss: {final_val_loss:.4f}')
-print(f'Final Validation Accuracy: {final_val_accuracy:.4f} ({final_val_accuracy*100:.2f}%)')
-
-# Perform evaluation with examples
-print('\nExample translations:')
-evaluate_and_show_examples(encoder, decoder, dataloader, criterion)
+# Perform final evaluation with examples and report validation accuracy
+print("\nFinal Evaluation Results:")
+evaluate_and_show_examples(encoder, decoder, val_dataloader, criterion)
