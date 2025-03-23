@@ -730,9 +730,9 @@ def plot_attention_matrices(attention_data, n_examples=3):
     
     for i, data in enumerate(attention_data[:n]):
         ax = axes[i]
-        attention = data['attention']
-        input_sentence = data['input'].split()
-        output_sentence = data['output'].split()
+        attention = data['attention_weights']
+        input_sentence = data['input_sentence'].split()
+        output_sentence = data['target_sentence'].split()
         
         # Display the attention matrix with the custom colormap
         im = ax.imshow(attention, cmap=cm, aspect='auto', interpolation='nearest')
