@@ -5,7 +5,7 @@ data = [
 ("good night","N'ar chures"),
 ("thank you very much", "Diosï meyamu"),
 ("my name is","ji arinshi"),
-("bought the pot","pyásti tsúntsu-ni")
+("bought the pot","pyásti tsúntsu-ni"),
 ("he will me you at marias place","kuntaati maria-o"),
 ("that womans dog","imá wárhiti-ri wíchu"),
 ("brother","markueni"),
