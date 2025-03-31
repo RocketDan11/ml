@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 import matplotlib.pyplot as plt
 import numpy as np
+import random
 from matplotlib.colors import LinearSegmentedColormap
 
 # Device configuration
@@ -90,17 +91,31 @@ translation_dataset = TranslationDataset(english_to_purepecha, word_to_index)
 dataloader = DataLoader(translation_dataset, batch_size=1, shuffle=True)
 
 class Encoder(nn.Module):
-    """The Encoder part of the seq2seq model with attention."""
-    def __init__(self, input_size, hidden_size):
+    """The Encoder part of the seq2seq model with attention and residual connections."""
+    def __init__(self, input_size, hidden_size, dropout=0.1):
         super(Encoder, self).__init__()
         self.hidden_size = hidden_size
         self.embedding = nn.Embedding(input_size, hidden_size)  # Embedding layer
         self.gru = nn.GRU(hidden_size, hidden_size, batch_first=True)  # GRU layer
-
+        self.dropout = nn.Dropout(dropout)
+        self.layer_norm = nn.LayerNorm(hidden_size)
+        
     def forward(self, input, hidden):
-        # Forward pass for the encoder
+        # Forward pass for the encoder with residual connections
         embedded = self.embedding(input).view(1, 1, -1)
+        embedded = self.dropout(embedded)
+        
+        # Apply GRU
         output, hidden = self.gru(embedded, hidden)
+        
+        # Residual connection: Add the embedded input to the output
+        # For this to work, we need to ensure dimensions match
+        # Since embedded and output are both [1, 1, hidden_size], we can add them directly
+        output = output + embedded
+        
+        # Layer normalization for stability
+        output = self.layer_norm(output)
+        
         return output, hidden
 
     def initHidden(self):
@@ -108,7 +123,7 @@ class Encoder(nn.Module):
         return torch.zeros(1, 1, self.hidden_size, device=device)
 
 class MultiHeadAttention(nn.Module):
-    """Multi-Head Attention mechanism from 'Attention Is All You Need' paper."""
+    """Multi-Head Attention mechanism from 'Attention Is All You Need' paper with residual connections."""
     def __init__(self, hidden_size, num_heads=4, dropout=0.1):
         super(MultiHeadAttention, self).__init__()
         
@@ -130,6 +145,9 @@ class MultiHeadAttention(nn.Module):
         # Dropout for regularization
         self.dropout = nn.Dropout(dropout)
         
+        # Layer normalization for residual connections
+        self.layer_norm = nn.LayerNorm(hidden_size)
+        
         # Scaling factor for dot product attention
         self.scale = torch.sqrt(torch.FloatTensor([self.head_dim])).to(device)
         
@@ -138,6 +156,9 @@ class MultiHeadAttention(nn.Module):
         # For decoder self-attention: query = decoder hidden state, key/value = encoder outputs
         
         batch_size = query.shape[0]
+        
+        # Store original query for residual connection
+        residual = query
         
         # Linear projections and split into multiple heads
         # [batch_size, seq_len, hidden_size]
@@ -183,18 +204,32 @@ class MultiHeadAttention(nn.Module):
         # Final linear projection
         output = self.output_proj(x)
         
+        # Apply residual connection and layer normalization
+        # Only if query, key, and value are the same (self-attention)
+        if query.size() == key.size() and key.size() == value.size():
+            output = self.layer_norm(output + residual)
+        
         # Return both the output and the attention weights for visualization
         return output, attention
 
 
 class Attention(nn.Module):
-    """Wrapper around Multi-Head Attention for compatibility with the existing code."""
-    def __init__(self, hidden_size):
+    """Enhanced wrapper around Multi-Head Attention for compatibility with the existing code."""
+    def __init__(self, hidden_size, dropout=0.1):
         super(Attention, self).__init__()
         self.hidden_size = hidden_size
         
-        # Use the Multi-Head Attention mechanism
-        self.multihead_attn = MultiHeadAttention(hidden_size, num_heads=4)
+        # Use the Multi-Head Attention mechanism with more heads for better representation
+        self.multihead_attn = MultiHeadAttention(hidden_size, num_heads=8, dropout=dropout)
+        
+        # Add extra layer normalization for stability
+        self.layer_norm = nn.LayerNorm(hidden_size)
+        
+        # Add a projection layer to enhance the query representation
+        self.query_projection = nn.Linear(hidden_size, hidden_size)
+        
+        # Dropout for regularization
+        self.dropout = nn.Dropout(dropout)
         
     def forward(self, hidden, encoder_outputs):
         # Adapt the interface to work with the existing seq2seq model
@@ -205,24 +240,29 @@ class Attention(nn.Module):
         # [1, seq_len, hidden_size]
         encoder_outputs = encoder_outputs.permute(1, 0, 2)
         
-        # Use hidden state as query, encoder outputs as key and value
-        # Expand hidden to match batch dimension of encoder_outputs
+        # Project and enhance the hidden state query
         # [1, 1, hidden_size]
         query = hidden.permute(1, 0, 2)
+        query = self.query_projection(query)
+        query = self.dropout(query)
         
-        # Compute multi-head attention
+        # Compute multi-head attention with residual connection
         # output shape: [1, 1, hidden_size]
         # attn_weights shape: [1, num_heads, 1, seq_len]
-        _, attn_weights = self.multihead_attn(query, encoder_outputs, encoder_outputs)
+        output, attn_weights = self.multihead_attn(query, encoder_outputs, encoder_outputs)
+        
+        # Apply residual connection and layer normalization
+        output = self.layer_norm(output + query)
         
         # Average attention weights across heads for visualization
         # [1, seq_len]
         attn_weights = attn_weights.mean(dim=1).squeeze(0)
         
+        # Return attention weights for visualization
         return attn_weights
 
 class AttentionDecoder(nn.Module):
-    """The Decoder part of the seq2seq model with Transformer-style attention."""
+    """The Decoder part of the seq2seq model with enhanced Transformer-style attention and residual connections."""
     def __init__(self, hidden_size, output_size, dropout=0.1):
         super(AttentionDecoder, self).__init__()
         self.hidden_size = hidden_size
@@ -237,6 +277,10 @@ class AttentionDecoder(nn.Module):
         # Add layer normalization for stability (from Transformer)
         self.layer_norm1 = nn.LayerNorm(hidden_size)
         self.layer_norm2 = nn.LayerNorm(hidden_size)
+        self.layer_norm3 = nn.LayerNorm(hidden_size)
+        
+        # Pre-GRU projection to map concatenated embeddings and context to hidden_size
+        self.pre_gru_projection = nn.Linear(hidden_size * 2, hidden_size)
         
         # Feed-forward network (from Transformer)
         self.feed_forward = nn.Sequential(
@@ -247,7 +291,7 @@ class AttentionDecoder(nn.Module):
         )
         
         # GRU for maintaining sequence state (hybrid approach)
-        self.gru = nn.GRU(hidden_size * 2, hidden_size, batch_first=True)
+        self.gru = nn.GRU(hidden_size, hidden_size, batch_first=True)
         
         # Output layer
         self.out = nn.Linear(hidden_size, output_size)
@@ -274,22 +318,43 @@ class AttentionDecoder(nn.Module):
         # [1, 1, hidden_size]
         context = torch.bmm(attn_weights.unsqueeze(0), encoder_outputs.permute(1, 0, 2))
         
-        # Apply residual connection and layer normalization (Transformer style)
-        # First combine the context with the embedded input
+        # First residual block: Combine embedded input with context
         # [1, 1, hidden_size * 2]
         combined = torch.cat((embedded, context), dim=2)
         
-        # Pass through GRU (maintaining the RNN component for sequence modeling)
+        # Project the combined vector to hidden_size for residual connection
+        projected = self.pre_gru_projection(combined)
+        projected = self.dropout(projected)
+        
+        # Store original hidden for residual connection
+        original_hidden = hidden
+        
+        # Pass through GRU with residual connection
         # output shape: [1, 1, hidden_size]
         # hidden shape: [1, 1, hidden_size]
-        gru_output, hidden = self.gru(combined, hidden)
+        gru_output, hidden = self.gru(projected, hidden)
+        
+        # Apply residual connection to GRU output
+        # Add original hidden state to output for better gradient flow
+        gru_output = gru_output + projected
         
         # Apply layer normalization
         normalized_output = self.layer_norm1(gru_output)
         
+        # Second residual block: Feed-forward network
+        # Store normalized output for residual connection
+        residual = normalized_output
+        
         # Feed-forward network with residual connection (Transformer style)
-        ff_output = normalized_output + self.feed_forward(normalized_output)
+        ff_output = self.feed_forward(normalized_output)
+        ff_output = residual + ff_output
         ff_output = self.layer_norm2(ff_output)
+        
+        # Apply another residual connection from the embedded input
+        # This creates a deep residual path from input to output
+        if ff_output.size() == embedded.size():
+            ff_output = ff_output + embedded
+            ff_output = self.layer_norm3(ff_output)
         
         # Final output projection
         # [1, output_size]
@@ -305,18 +370,21 @@ class AttentionDecoder(nn.Module):
 input_size = len(word_to_index)
 hidden_size = 256  # Adjust according to your preference
 output_size = len(word_to_index)
+dropout_rate = 0.2  # Increase dropout for better generalization
 
-encoder = Encoder(input_size=input_size, hidden_size=hidden_size).to(device)
-decoder = AttentionDecoder(hidden_size=hidden_size, output_size=output_size).to(device)
+# Initialize with residual connections and dropout
+encoder = Encoder(input_size=input_size, hidden_size=hidden_size, dropout=dropout_rate).to(device)
+decoder = AttentionDecoder(hidden_size=hidden_size, output_size=output_size, dropout=dropout_rate).to(device)
 
 # Set the learning rate for optimization
 learning_rate = 0.008
 
 # Initializing optimizers for both encoder and decoder with Adam optimizer
-encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
-decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
+# Using Adam instead of SGD for better optimization on small datasets
+encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate)
+decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate)
 
-def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion):
+def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, clip=1.0, teacher_forcing_ratio=0.5):
     # Initialize encoder hidden state
     encoder_hidden = encoder.initHidden()
 
@@ -347,6 +415,9 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
     
     # Store attention weights for visualization
     attention_weights = torch.zeros(target_length, input_length)
+    
+    # Use teacher forcing with some probability
+    use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
     # Decoding loop
     for di in range(target_length):
@@ -355,17 +426,28 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
         # Store attention weights
         attention_weights[di] = attn_weights.squeeze()
         
-        # Choose top1 word from decoder's output
-        topv, topi = decoder_output.topk(1)
-        decoder_input = topi.squeeze().detach()  # Detach from history as input
-
         # Calculate loss
         loss += criterion(decoder_output, target_tensor[di].unsqueeze(0))
-        if decoder_input.item() == EOS_token:  # Stop if EOS token is generated
+        
+        # Teacher forcing: Next input is the current target
+        if use_teacher_forcing and di < target_length - 1:
+            decoder_input = target_tensor[di].unsqueeze(0)  # Teacher forcing uses the real target as the next input
+        else:
+            # Without teacher forcing: Next input is the model's own prediction
+            topv, topi = decoder_output.topk(1)
+            decoder_input = topi.squeeze().detach()  # Detach from history as input
+        
+        # Stop if EOS token is generated
+        if decoder_input.item() == EOS_token:
             break
 
     # Backpropagation
     loss.backward()
+    
+    # Apply gradient clipping to prevent exploding gradients
+    # This helps with training stability
+    torch.nn.utils.clip_grad_norm_(encoder.parameters(), clip)
+    torch.nn.utils.clip_grad_norm_(decoder.parameters(), clip)
 
     # Update encoder and decoder parameters
     encoder_optimizer.step()
@@ -381,14 +463,15 @@ criterion = nn.NLLLoss()
 # Training parameters
 n_iters = 50
 learning_rate = 0.005
+dropout_rate = 0.2  # Increase dropout for better generalization
 
-# Initialize the encoder and decoder with appropriate parameters
-encoder = Encoder(input_size, hidden_size).to(device)
-decoder = AttentionDecoder(hidden_size, output_size).to(device)
+# Initialize the encoder and decoder with residual connections and proper dropout
+encoder = Encoder(input_size, hidden_size, dropout=dropout_rate).to(device)
+decoder = AttentionDecoder(hidden_size, output_size, dropout=dropout_rate).to(device)
 
-# Initialize optimizers
-encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate)
-decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate)
+# Initialize optimizers with weight decay to prevent overfitting
+encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate, weight_decay=1e-5)
+decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate, weight_decay=1e-5)
 
 # Function to train and validate the model
 def train_and_validate(encoder, decoder, encoder_optimizer, decoder_optimizer, dataloader, criterion, n_epochs=100):
@@ -400,6 +483,20 @@ def train_and_validate(encoder, decoder, encoder_optimizer, decoder_optimizer, d
     best_bleu_score = 0.0
     best_encoder_wts = None
     best_decoder_wts = None
+    
+    # Add learning rate schedulers to reduce LR on plateau
+    # This helps fine-tune the model as training progresses
+    encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        encoder_optimizer, mode='min', factor=0.5, patience=5, verbose=True, min_lr=1e-6
+    )
+    decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        decoder_optimizer, mode='min', factor=0.5, patience=5, verbose=True, min_lr=1e-6
+    )
+    
+    # Early stopping parameters
+    patience = 10
+    early_stop_counter = 0
+    best_val_loss = float('inf')
     
     # Training loop
     for epoch in range(1, n_epochs + 1):
@@ -431,14 +528,43 @@ def train_and_validate(encoder, decoder, encoder_optimizer, decoder_optimizer, d
         validation_losses.append(val_loss)
         validation_bleu_scores.append(bleu_score)
         
+        # Update learning rate schedulers
+        encoder_scheduler.step(val_loss)
+        decoder_scheduler.step(val_loss)
+        
         # Save best model based on BLEU score
         if bleu_score > best_bleu_score:
             best_bleu_score = bleu_score
             best_encoder_wts = encoder.state_dict().copy()
             best_decoder_wts = decoder.state_dict().copy()
+            
+        # Early stopping based on validation loss
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            early_stop_counter = 0
+        else:
+            early_stop_counter += 1
+            
+        if early_stop_counter >= patience:
+            print(f'Early stopping triggered after {epoch} epochs')
+            break
         
         # Print progress
         print(f'Epoch {epoch}/{n_epochs} | Train Loss: {avg_loss:.4f} | Val Loss: {val_loss:.4f} | BLEU: {bleu_score:.4f}')
+        
+        # Save checkpoint every 10 epochs
+        if epoch % 10 == 0:
+            checkpoint = {
+                'encoder_state_dict': encoder.state_dict(),
+                'decoder_state_dict': decoder.state_dict(),
+                'encoder_optimizer': encoder_optimizer.state_dict(),
+                'decoder_optimizer': decoder_optimizer.state_dict(),
+                'epoch': epoch,
+                'word_to_index': word_to_index,
+                'index_to_word': index_to_word
+            }
+            torch.save(checkpoint, f'checkpoint_epoch_{epoch}.pt')
+            print(f"Checkpoint saved at epoch {epoch}")
         
     # Load best model weights
     encoder.load_state_dict(best_encoder_wts)
