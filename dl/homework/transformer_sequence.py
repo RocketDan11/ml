@@ -167,7 +167,7 @@ def main():
     num_layers = 3
     dim_feedforward = 512
     batch_size = 64
-    n_epochs = 50
+    n_epochs = 40
     seq_len = 20
     learning_rate = 0.001
     
