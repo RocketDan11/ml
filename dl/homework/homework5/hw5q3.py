@@ -5,8 +5,6 @@ from torch.utils.data import DataLoader, Dataset
 
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
-
 
 # English to French translation dataset
 english_to_french = [
@@ -89,53 +87,40 @@ english_to_french = [
     ("He sings in the choir", "Il chante dans le chœur")
 ]
 
-reversed_dataset = [(french, english) for english, french in english_to_french]
-
-# 1. Reverse the order of sentences in your dataset
-reversed_dataset = [(target_sentence, input_sentence) for input_sentence, target_sentence in english_to_french]
-
 # Special tokens for the start and end of sequences
 SOS_token = 0  # Start Of Sequence Token
 EOS_token = 1  # End Of Sequence Token
 
-# 2. Modify the word-to-index mapping
-PAD_token = 2  # Add this after your SOS_token and EOS_token definitions
-reversed_word_to_index = {"SOS": SOS_token, "EOS": EOS_token}
-for pair in reversed_dataset:
+# Preparing the word to index mapping and vice versa
+word_to_index = {"SOS": SOS_token, "EOS": EOS_token}
+for pair in english_to_french:
     for word in pair[0].split() + pair[1].split():
-        if word not in reversed_word_to_index:
-            reversed_word_to_index[word] = len(reversed_word_to_index)
+        if word not in word_to_index:
+            word_to_index[word] = len(word_to_index)
 
-# 3. Adjust the TranslationDataset class to generate input and target tensors in the reversed order
-class ReversedTranslationDataset(Dataset):
+index_to_word = {i: word for word, i in word_to_index.items()}
+
+class TranslationDataset(Dataset):
+    """Custom Dataset class for handling translation pairs."""
     def __init__(self, dataset, word_to_index):
         self.dataset = dataset
         self.word_to_index = word_to_index
-        # Calculate max length for padding
-        self.max_length = max(max(len(pair[0].split()) + 1, len(pair[1].split()) + 1) for pair in dataset)
 
     def __len__(self):
+        # Returns the total number of translation pairs in the dataset
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        target_sentence, input_sentence = self.dataset[idx]
+        # Retrieves a translation pair by index, converts words to indices,
+        # and adds the EOS token at the end of each sentence.
+        input_sentence, target_sentence = self.dataset[idx]
         input_indices = [self.word_to_index[word] for word in input_sentence.split()] + [EOS_token]
         target_indices = [self.word_to_index[word] for word in target_sentence.split()] + [EOS_token]
-        
-        # Pad sequences to max_length
-        input_padding = [PAD_token] * (self.max_length - len(input_indices))
-        target_padding = [PAD_token] * (self.max_length - len(target_indices))
-        
-        input_indices = input_indices + input_padding
-        target_indices = target_indices + target_padding
-        
-        return torch.tensor(input_indices, dtype=torch.long), torch.tensor(target_indices, dtype=torch.long)
+        return torch.tensor(input_indices, dtype=torch.long).to(device), torch.tensor(target_indices, dtype=torch.long).to(device)
 
-# Creating a DataLoader to batch and shuffle the reversed dataset
-reversed_translation_dataset = ReversedTranslationDataset(reversed_dataset, reversed_word_to_index)
-# Increase batch size for GPU training
-batch_size = 32 if torch.cuda.is_available() else 1
-reversed_dataloader = DataLoader(reversed_translation_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
+# Creating a DataLoader to batch and shuffle the dataset
+translation_dataset = TranslationDataset(english_to_french, word_to_index)
+dataloader = DataLoader(translation_dataset, batch_size=1, shuffle=True)
 
 class Transformer(nn.Module):
     def __init__(self, input_vocab_size, target_vocab_size, hidden_size, num_layers=2, num_heads=8, dropout=0.1):
@@ -176,19 +161,18 @@ class Transformer(nn.Module):
         return output.permute(1, 0, 2)
 
     def generate_padding_mask(self, sequence):
-            mask = (sequence == PAD_token)
-            return mask.to(sequence.device)
-    
+        mask = (sequence == word_to_index["EOS"])
+        return mask.to(device)
+
     def generate_subsequent_mask(self, sequence):
-        # Create mask on the same device as the sequence
-        mask = (torch.triu(torch.ones(sequence.size(1), sequence.size(1), device=sequence.device)) == 1).transpose(0, 1)
+        mask = (torch.triu(torch.ones(sequence.size(1), sequence.size(1))) == 1).transpose(0, 1)
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
-        return mask.to(sequence.device)
+        return mask.to(device)
 
 # Assuming all words in the dataset + 'SOS' and 'EOS' tokens are included in word_to_index
-input_size = len(reversed_word_to_index)
+input_size = len(word_to_index)
 hidden_size = 64
-output_size = len(reversed_word_to_index)
+output_size = len(word_to_index)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -198,25 +182,21 @@ model = Transformer(input_size, output_size, hidden_size).to(device)
 learning_rate = 0.0005
 
 # Define the loss function and optimizer
-criterion = nn.CrossEntropyLoss(ignore_index=PAD_token)
+criterion = nn.CrossEntropyLoss(ignore_index=word_to_index["EOS"])
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
 # Set number of epochs for training
 n_epochs = 20
 
-# Enable cudnn benchmarking for faster training on GPU
-if torch.cuda.is_available():
-    torch.backends.cudnn.benchmark = True
-
-# 4. Update the training loop to handle the reversed input-target pairs
+# Training loop
 for epoch in range(n_epochs):
     total_loss = 0
     total_correct = 0
     total_examples = 0
 
-    model.train()
+    model.train()  # Set the model to training mode
 
-    for input_tensor, target_tensor in reversed_dataloader:  # Use reversed dataloader
+    for input_tensor, target_tensor in dataloader:
         input_tensor = input_tensor.to(device)
         target_tensor = target_tensor.to(device)
 
@@ -226,7 +206,7 @@ for epoch in range(n_epochs):
         output_dim = output.shape[-1]
 
         output = output.contiguous().view(-1, output_dim)
-        target_tensor = target_tensor[:, 1:].contiguous().view(-1)
+        target_tensor = target_tensor[:, 1:].contiguous().view(-1)  # Exclude SOS token from target
 
         loss = criterion(output, target_tensor)
         loss.backward()
@@ -237,14 +217,14 @@ for epoch in range(n_epochs):
         _, predicted = torch.max(output, 1)
         correct = (predicted == target_tensor).sum().item()
         total_correct += correct
-        total_examples += target_tensor.size(0)
+        total_examples += target_tensor.size(0)  # Use target tensor size for total examples
 
-    avg_loss = total_loss / len(reversed_dataloader)
-    training_accuracy = total_correct / total_examples
+    avg_loss = total_loss / len(dataloader)
+    training_accuracy = total_correct / total_examples  # Calculate training accuracy
 
     print(f"Epoch [{epoch+1}/{n_epochs}], Loss: {avg_loss:.4f}, Training Accuracy: {training_accuracy:.4f}")
+     
 
-# Define the evaluation function outside the training loop
 def evaluate_model(model, dataloader, criterion):
     total_loss = 0
     total_correct = 0
@@ -277,5 +257,5 @@ def evaluate_model(model, dataloader, criterion):
 
     return avg_loss, accuracy
 
-eval_loss, eval_accuracy = evaluate_model(model, reversed_dataloader, criterion)
+eval_loss, eval_accuracy = evaluate_model(model, dataloader, criterion)
 print(f"Evaluation Loss: {eval_loss:.4f}, Evaluation Accuracy: {eval_accuracy:.4f}")
