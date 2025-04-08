@@ -157,7 +157,7 @@ def main():
     
     # Device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
+    print(f"Using device: {device}")
     # Data augmentation and normalization
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
