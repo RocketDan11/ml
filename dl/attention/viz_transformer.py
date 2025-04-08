@@ -5,7 +5,7 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-import numpy as np
+from torchinfo import summary
 
 class PatchEmbedding(nn.Module):
     def __init__(self, img_size=32, patch_size=4, in_channels=3, embed_dim=192):
@@ -193,6 +193,9 @@ def main():
         mlp_ratio=4.,
         dropout=0.1
     ).to(device)
+    
+    # Display model summary
+    summary(model, input_size=(batch_size, 3, 32, 32), device=device)
     
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
