@@ -10,7 +10,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Hyperparameters
 image_size = 32
-patch_size = 4
+patch_size = 8
 num_classes = 100
 num_epochs = 50
 batch_size = 64
@@ -27,7 +27,7 @@ transform = transforms.Compose([
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 
-# CIFAR-10 dataset
+# CIFAR-100 dataset
 train_dataset = torchvision.datasets.CIFAR100(root='./data', train=True,
                                            download=True, transform=transform)
 test_dataset = torchvision.datasets.CIFAR100(root='./data', train=False,
