@@ -3,6 +3,7 @@ import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -128,7 +129,8 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 def train():
     model.train()
     for epoch in range(num_epochs):
-        for i, (images, labels) in enumerate(train_loader):
+        progress_bar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
+        for i, (images, labels) in enumerate(progress_bar):
             images = images.to(device)
             labels = labels.to(device)
             
@@ -153,8 +155,8 @@ def train():
             loss.backward()
             optimizer.step()
             
-            if (i+1) % 100 == 0:
-                print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}], Loss: {loss.item():.4f}')
+            # Update progress bar
+            progress_bar.set_postfix({'loss': f'{loss.item():.4f}'})
 
 # Test the model
 def test():
@@ -162,15 +164,20 @@ def test():
     with torch.no_grad():
         correct = 0
         total = 0
-        for images, labels in test_loader:
+        progress_bar = tqdm(test_loader, desc='Testing')
+        for images, labels in progress_bar:
             images = images.to(device)
             labels = labels.to(device)
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            
+            # Update progress bar with current accuracy
+            accuracy = 100 * correct / total
+            progress_bar.set_postfix({'accuracy': f'{accuracy:.2f}%'})
         
-        print(f'Accuracy: {100 * correct / total}%')
+        print(f'Final Accuracy: {100 * correct / total:.2f}%')
 
 # Run training and testing
 if __name__ == '__main__':
