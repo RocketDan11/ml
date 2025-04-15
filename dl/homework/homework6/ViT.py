@@ -10,7 +10,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # Hyperparameters
 image_size = 32
 patch_size = 4
-num_classes = 10
+num_classes = 100
 num_epochs = 50
 batch_size = 64
 learning_rate = 0.001
@@ -27,9 +27,9 @@ transform = transforms.Compose([
 ])
 
 # CIFAR-10 dataset
-train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True,
+train_dataset = torchvision.datasets.CIFAR100(root='./data', train=True,
                                            download=True, transform=transform)
-test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False,
+test_dataset = torchvision.datasets.CIFAR100(root='./data', train=False,
                                           download=True, transform=transform)
 
 train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
@@ -84,7 +84,7 @@ class VisionTransformer(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
         self.dropout = nn.Dropout(dropout)
         
-        self.transformer = nn.Moduleanthan(
+        self.transformer = nn.ModuleList(
             [TransformerEncoder(embed_dim, num_heads, mlp_dim, dropout) 
              for _ in range(num_layers)]
         )
@@ -132,8 +132,20 @@ def train():
             images = images.to(device)
             labels = labels.to(device)
             
+            # Debug information
+            if i == 0 and epoch == 0:
+                print(f"Input images shape: {images.shape}")
+                print(f"Labels shape: {labels.shape}")
+                print(f"Labels values: {labels[:10]}")  # Print first 10 labels
+            
             # Forward pass
             outputs = model(images)
+            
+            # Debug information
+            if i == 0 and epoch == 0:
+                print(f"Model outputs shape: {outputs.shape}")
+                print(f"Expected outputs shape: {torch.Size([batch_size, num_classes])}")
+            
             loss = criterion(outputs, labels)
             
             # Backward and optimize
