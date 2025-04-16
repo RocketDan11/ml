@@ -4,6 +4,8 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+import numpy as np
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -128,8 +130,15 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 # Training loop
 def train():
     model.train()
+    train_losses = []
+    train_accuracies = []
+    
     for epoch in range(num_epochs):
         progress_bar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        
         for i, (images, labels) in enumerate(progress_bar):
             images = images.to(device)
             labels = labels.to(device)
@@ -155,33 +164,105 @@ def train():
             loss.backward()
             optimizer.step()
             
+            # Calculate accuracy
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+            running_loss += loss.item()
+            
             # Update progress bar
-            progress_bar.set_postfix({'loss': f'{loss.item():.4f}'})
+            progress_bar.set_postfix({
+                'loss': f'{loss.item():.4f}',
+                'acc': f'{100 * correct / total:.2f}%'
+            })
+        
+        # Calculate epoch metrics
+        epoch_loss = running_loss / len(train_loader)
+        epoch_acc = 100 * correct / total
+        
+        # Store metrics
+        train_losses.append(epoch_loss)
+        train_accuracies.append(epoch_acc)
+        
+        # Print epoch summary
+        print(f'Epoch {epoch+1}/{num_epochs} - Loss: {epoch_loss:.4f}, Accuracy: {epoch_acc:.2f}%')
+    
+    return train_losses, train_accuracies
 
 # Test the model
 def test():
     model.eval()
+    test_losses = []
+    test_accuracies = []
+    
     with torch.no_grad():
         correct = 0
         total = 0
+        running_loss = 0.0
         progress_bar = tqdm(test_loader, desc='Testing')
+        
         for images, labels in progress_bar:
             images = images.to(device)
             labels = labels.to(device)
             outputs = model(images)
+            loss = criterion(outputs, labels)
+            
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            running_loss += loss.item()
             
             # Update progress bar with current accuracy
             accuracy = 100 * correct / total
             progress_bar.set_postfix({'accuracy': f'{accuracy:.2f}%'})
         
-        print(f'Final Accuracy: {100 * correct / total:.2f}%')
+        # Calculate final metrics
+        final_loss = running_loss / len(test_loader)
+        final_acc = 100 * correct / total
+        
+        # Store metrics
+        test_losses.append(final_loss)
+        test_accuracies.append(final_acc)
+        
+        print(f'Final Test Loss: {final_loss:.4f}, Final Test Accuracy: {final_acc:.2f}%')
+    
+    return test_losses, test_accuracies
+
+# Visualize training and testing results
+def visualize_results(train_losses, train_accuracies, test_losses, test_accuracies):
+    plt.figure(figsize=(12, 5))
+    
+    # Plot losses
+    plt.subplot(1, 2, 1)
+    plt.plot(train_losses, label='Training Loss')
+    plt.plot([len(train_losses)-1], test_losses, 'ro', label='Test Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training and Test Loss')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot accuracies
+    plt.subplot(1, 2, 2)
+    plt.plot(train_accuracies, label='Training Accuracy')
+    plt.plot([len(train_accuracies)-1], test_accuracies, 'ro', label='Test Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy (%)')
+    plt.title('Training and Test Accuracy')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    plt.savefig('vit_training_results.png')
+    plt.show()
 
 # Run training and testing
 if __name__ == '__main__':
     print("Training started...")
-    train()
+    train_losses, train_accuracies = train()
     print("\nTesting started...")
-    test()
+    test_losses, test_accuracies = test()
+    
+    # Visualize results
+    print("\nVisualizing results...")
+    visualize_results(train_losses, train_accuracies, test_losses, test_accuracies)
