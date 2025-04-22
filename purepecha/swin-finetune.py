@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from transformers import MarianMTModel, MarianTokenizer, AdamW, get_linear_schedule_with_warmup
+from transformers import MarianMTModel, MarianTokenizer, get_linear_schedule_with_warmup
+from torch.optim import AdamW
 from tqdm import tqdm
 import ast
 import random
@@ -164,7 +165,7 @@ def translate(model, tokenizer, text, max_length=128):
 
 def main():
     # Load the Purepecha data
-    data = load_purepecha_data('purepecha/assets/purepecha_data.txt')
+    data = load_purepecha_data('./assets/purepecha_data.txt')
     print(f"Loaded {len(data)} translation pairs")
     
     # Split data into train and validation sets
@@ -172,11 +173,17 @@ def main():
     print(f"Training set: {len(train_data)} pairs, Validation set: {len(val_data)} pairs")
     
     # Load pre-trained model and tokenizer
-    # Using Helsinki-NLP's MarianMT model for English to Spanish as a starting point
-    # We'll fine-tune it for English to Purepecha
-    model_name = "Helsinki-NLP/opus-mt-en-es"
+    # Using a multilingual model as a starting point
+    model_name = "Helsinki-NLP/opus-mt-en-mul"  # Multilingual model
     tokenizer = MarianTokenizer.from_pretrained(model_name)
     model = MarianMTModel.from_pretrained(model_name).to(device)
+    
+    # Add special tokens for Purepecha
+    special_tokens = {
+        'additional_special_tokens': ['<purepecha>', '</purepecha>']
+    }
+    tokenizer.add_special_tokens(special_tokens)
+    model.resize_token_embeddings(len(tokenizer))
     
     # Create datasets
     train_dataset = PurepechaDataset(train_data, tokenizer, max_length)
@@ -204,11 +211,17 @@ def main():
         # Save the best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), 'purepecha_best_model.pt')
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'tokenizer': tokenizer,
+                'epoch': epoch,
+                'val_loss': val_loss
+            }, 'purepecha_best_model.pt')
             print(f"Model saved with validation loss: {val_loss:.4f}")
     
     # Load the best model for translation
-    model.load_state_dict(torch.load('purepecha_best_model.pt'))
+    checkpoint = torch.load('purepecha_best_model.pt', weights_only=False)
+    model.load_state_dict(checkpoint['model_state_dict'])
     
     # Test translations
     test_phrases = [
