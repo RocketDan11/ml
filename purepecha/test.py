@@ -9,6 +9,8 @@ from tqdm import tqdm
 import torch.cuda as cuda
 import torch.backends.cudnn as cudnn
 from typing import Literal
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from nltk.tokenize import word_tokenize
 
 def print_torch_info():
     print("\nPyTorch Information:")
@@ -196,7 +198,7 @@ class RNNTranslator(nn.Module):
         output = self.final_layer(self.output_dropout(dec_output))
         return output
 
-def train_and_evaluate(model, train_loader, val_loader, num_epochs=10, learning_rate=0.001):
+def train_and_evaluate(model, train_loader, val_loader, num_epochs=10, learning_rate=0.001, tgt_vocab=None):
     criterion = nn.CrossEntropyLoss(ignore_index=0)  # Ignore padding
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, factor=0.5)
@@ -207,6 +209,7 @@ def train_and_evaluate(model, train_loader, val_loader, num_epochs=10, learning_
     
     best_val_loss = float('inf')
     best_model_state = None
+    best_bleu_score = 0.0
     
     for epoch in range(num_epochs):
         # Training phase
@@ -247,6 +250,8 @@ def train_and_evaluate(model, train_loader, val_loader, num_epochs=10, learning_
         val_loss = 0
         val_acc = 0
         val_batches = 0
+        all_predictions = []
+        all_targets = []
         
         val_pbar = tqdm(val_loader, desc=f'Epoch {epoch+1}/{num_epochs} [Val]')
         with torch.no_grad():
@@ -263,6 +268,10 @@ def train_and_evaluate(model, train_loader, val_loader, num_epochs=10, learning_
                 val_acc += acc
                 val_batches += 1
                 
+                # Store predictions and targets for BLEU score
+                all_predictions.extend(predictions.cpu().numpy())
+                all_targets.extend(tgt[:, 1:].cpu().numpy())
+                
                 val_pbar.set_postfix({
                     'loss': f'{val_loss/val_batches:.4f}',
                     'acc': f'{val_acc/val_batches:.4f}',
@@ -272,20 +281,71 @@ def train_and_evaluate(model, train_loader, val_loader, num_epochs=10, learning_
         avg_val_loss = val_loss / len(val_loader)
         avg_val_acc = val_acc / len(val_loader)
         
+        # Calculate BLEU score
+        bleu_score = calculate_bleu_score(all_predictions, all_targets, tgt_vocab)
+        
+        # Update learning rate
         scheduler.step(avg_val_loss)
         
+        # Print epoch summary
         print(f'\nEpoch {epoch+1}/{num_epochs} Summary:')
         print(f'Training Loss: {avg_train_loss:.4f} | Training Accuracy: {avg_train_acc:.4f}')
         print(f'Validation Loss: {avg_val_loss:.4f} | Validation Accuracy: {avg_val_acc:.4f}')
+        print(f'BLEU Score: {bleu_score:.4f}')
         print(f'Learning Rate: {optimizer.param_groups[0]["lr"]:.6f}')
         
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
+        # Save best model based on BLEU score
+        if bleu_score > best_bleu_score:
+            best_bleu_score = bleu_score
             best_model_state = model.state_dict()
             print('New best model saved!')
     
+    # Load best model
     model.load_state_dict(best_model_state)
     return model
+
+def calculate_bleu_score(predictions, targets, tgt_vocab, max_n=4):
+    """
+    Calculate BLEU score for translation predictions.
+    
+    Args:
+        predictions: List of predicted token indices
+        targets: List of target token indices
+        tgt_vocab: Target vocabulary dictionary
+        max_n: Maximum n-gram order for BLEU score calculation
+    
+    Returns:
+        Average BLEU score across all predictions
+    """
+    # Create reverse vocabulary mapping
+    idx_to_word = {idx: word for word, idx in tgt_vocab.items()}
+    
+    # Convert indices to words
+    pred_texts = []
+    ref_texts = []
+    
+    for pred, ref in zip(predictions, targets):
+        # Convert indices to words, ignoring padding tokens
+        pred_words = [idx_to_word[idx] for idx in pred if idx not in (tgt_vocab['<pad>'], tgt_vocab['<sos>'], tgt_vocab['<eos>'])]
+        ref_words = [idx_to_word[idx] for idx in ref if idx not in (tgt_vocab['<pad>'], tgt_vocab['<sos>'], tgt_vocab['<eos>'])]
+        
+        if pred_words and ref_words:  # Only add non-empty sequences
+            pred_texts.append(pred_words)
+            ref_texts.append([ref_words])  # Wrap in list for sentence_bleu
+    
+    # Calculate BLEU score
+    smoothie = SmoothingFunction().method1
+    bleu_scores = []
+    
+    for pred, ref in zip(pred_texts, ref_texts):
+        try:
+            score = sentence_bleu(ref, pred, smoothing_function=smoothie)
+            bleu_scores.append(score)
+        except:
+            # Skip if there's an error (e.g., empty sequences)
+            continue
+    
+    return np.mean(bleu_scores) if bleu_scores else 0.0
 
 def main():
     print_torch_info()
@@ -315,7 +375,7 @@ def main():
         output_vocab_size=len(tgt_vocab),
         rnn_type='lstm'
     )
-    lstm_model = train_and_evaluate(lstm_model, train_loader, val_loader)
+    lstm_model = train_and_evaluate(lstm_model, train_loader, val_loader, tgt_vocab=tgt_vocab)
     
     # Train and evaluate GRU model
     print("\nTraining GRU model...")
@@ -324,7 +384,7 @@ def main():
         output_vocab_size=len(tgt_vocab),
         rnn_type='gru'
     )
-    gru_model = train_and_evaluate(gru_model, train_loader, val_loader)
+    gru_model = train_and_evaluate(gru_model, train_loader, val_loader, tgt_vocab=tgt_vocab)
 
 if __name__ == '__main__':
     main()
