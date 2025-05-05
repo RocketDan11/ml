@@ -45,8 +45,8 @@ def train_rnn_model(data_loaders, device, use_gru=False):
     
     # Create model
     model = RNNSeq2Seq(
-        encoder_vocab_size=len(data_loaders["purepecha_vocab"]),
-        decoder_vocab_size=len(data_loaders["english_vocab"]),
+        encoder_vocab_size=len(data_loaders["source_vocab"]),
+        decoder_vocab_size=len(data_loaders["target_vocab"]),
         encoder_embedding_dim=config.EMBEDDING_DIM,
         decoder_embedding_dim=config.EMBEDDING_DIM,
         hidden_dim=config.HIDDEN_DIM,
@@ -58,7 +58,7 @@ def train_rnn_model(data_loaders, device, use_gru=False):
     ).to(device)
     
     # Set decoder vocabulary
-    model.decoder.vocab = data_loaders["english_vocab"]
+    model.decoder.vocab = data_loaders["target_vocab"]
     
     # Skip model summary for now to avoid errors
     print(f"Model created: {model.__class__.__name__} with {sum(p.numel() for p in model.parameters() if p.requires_grad)} trainable parameters")
@@ -76,7 +76,7 @@ def train_rnn_model(data_loaders, device, use_gru=False):
         criterion=criterion,
         device=device,
         clip_grad=config.CLIP_GRAD,
-        checkpoint_dir=os.path.join(config.CHECKPOINT_DIR, 'rnn_gru' if use_gru else 'rnn_lstm'),
+        checkpoint_dir=os.path.join(config.CHECKPOINT_DIR, f"{data_loaders['direction']}_rnn_gru" if use_gru else f"{data_loaders['direction']}_rnn_lstm"),
         teacher_forcing_ratio=config.TEACHER_FORCING_RATIO,
         early_stopping_patience=config.EARLY_STOPPING_PATIENCE
     )
@@ -86,7 +86,7 @@ def train_rnn_model(data_loaders, device, use_gru=False):
     
     # Plot metrics
     model_name = 'GRU RNN' if use_gru else 'LSTM RNN'
-    save_path = f"results/{model_name.lower().replace(' ', '_')}_metrics.png"
+    save_path = f"results/{data_loaders['direction']}_{model_name.lower().replace(' ', '_')}_metrics.png"
     trainer.plot_metrics(save_path)
     
     return model, metrics
@@ -107,8 +107,8 @@ def train_attention_model(data_loaders, device, use_gru=False):
     
     # Create model
     model = AttentionSeq2Seq(
-        encoder_vocab_size=len(data_loaders["purepecha_vocab"]),
-        decoder_vocab_size=len(data_loaders["english_vocab"]),
+        encoder_vocab_size=len(data_loaders["source_vocab"]),
+        decoder_vocab_size=len(data_loaders["target_vocab"]),
         encoder_embedding_dim=config.EMBEDDING_DIM,
         decoder_embedding_dim=config.EMBEDDING_DIM,
         hidden_dim=config.HIDDEN_DIM,
@@ -121,7 +121,7 @@ def train_attention_model(data_loaders, device, use_gru=False):
     ).to(device)
     
     # Set decoder vocabulary
-    model.decoder.vocab = data_loaders["english_vocab"]
+    model.decoder.vocab = data_loaders["target_vocab"]
     
     # Skip model summary for now to avoid errors
     print(f"Model created: {model.__class__.__name__} with {sum(p.numel() for p in model.parameters() if p.requires_grad)} trainable parameters")
@@ -139,7 +139,7 @@ def train_attention_model(data_loaders, device, use_gru=False):
         criterion=criterion,
         device=device,
         clip_grad=config.CLIP_GRAD,
-        checkpoint_dir=os.path.join(config.CHECKPOINT_DIR, 'attention_gru' if use_gru else 'attention_lstm'),
+        checkpoint_dir=os.path.join(config.CHECKPOINT_DIR, f"{data_loaders['direction']}_attention_gru" if use_gru else f"{data_loaders['direction']}_attention_lstm"),
         teacher_forcing_ratio=config.TEACHER_FORCING_RATIO,
         early_stopping_patience=config.EARLY_STOPPING_PATIENCE
     )
@@ -149,7 +149,7 @@ def train_attention_model(data_loaders, device, use_gru=False):
     
     # Plot metrics
     model_name = 'GRU with Attention' if use_gru else 'LSTM with Attention'
-    save_path = f"results/{model_name.lower().replace(' ', '_')}_metrics.png"
+    save_path = f"results/{data_loaders['direction']}_{model_name.lower().replace(' ', '_')}_metrics.png"
     trainer.plot_metrics(save_path)
     
     # Visualize attention for a sample
@@ -160,10 +160,10 @@ def train_attention_model(data_loaders, device, use_gru=False):
     attention_viz = visualize_attention(
         model,
         source_text,
-        data_loaders["purepecha_vocab"],
-        data_loaders["english_vocab"],
+        data_loaders["source_vocab"],
+        data_loaders["target_vocab"],
         device,
-        save_path=f"results/{model_name.lower().replace(' ', '_')}_attention.png"
+        save_path=f"results/{data_loaders['direction']}_{model_name.lower().replace(' ', '_')}_attention.png"
     )
     
     return model, metrics
@@ -183,8 +183,8 @@ def train_transformer_model(data_loaders, device):
     
     # Create model
     model = TransformerSeq2Seq(
-        encoder_vocab_size=len(data_loaders["purepecha_vocab"]),
-        decoder_vocab_size=len(data_loaders["english_vocab"]),
+        encoder_vocab_size=len(data_loaders["source_vocab"]),
+        decoder_vocab_size=len(data_loaders["target_vocab"]),
         encoder_embedding_dim=config.EMBEDDING_DIM,
         decoder_embedding_dim=config.EMBEDDING_DIM,
         hidden_dim=config.TRANSFORMER_DIM,
@@ -211,7 +211,7 @@ def train_transformer_model(data_loaders, device):
         criterion=criterion,
         device=device,
         clip_grad=config.CLIP_GRAD,
-        checkpoint_dir=os.path.join(config.CHECKPOINT_DIR, 'transformer'),
+        checkpoint_dir=os.path.join(config.CHECKPOINT_DIR, f"{data_loaders['direction']}_transformer"),
         teacher_forcing_ratio=1.0,  # Always use teacher forcing for Transformer
         early_stopping_patience=config.EARLY_STOPPING_PATIENCE
     )
@@ -221,18 +221,19 @@ def train_transformer_model(data_loaders, device):
     
     # Plot metrics
     model_name = 'Transformer'
-    save_path = f"results/{model_name.lower()}_metrics.png"
+    save_path = f"results/{data_loaders['direction']}_{model_name.lower()}_metrics.png"
     trainer.plot_metrics(save_path)
     
     return model, metrics
 
-def train_llm_model(data, device):
+def train_llm_model(data, device, direction='en2pur'):
     """
     Fine-tune LLM model.
     
     Args:
         data: Pandas DataFrame with source and target texts
         device: Device to run training on
+        direction: Translation direction, either 'en2pur' or 'pur2en'
         
     Returns:
         Trained model and training metrics
@@ -242,13 +243,21 @@ def train_llm_model(data, device):
     # Choose a smaller model for demonstration purposes
     model_name = "t5-small"
     
+    # Set source and target columns based on direction
+    if direction == 'en2pur':
+        source_col = "english"
+        target_col = "purepecha"
+    else:  # pur2en
+        source_col = "purepecha"
+        target_col = "english"
+    
     # Fine-tune model
     model = fine_tune_llm(
         dataframe=data,
-        source_col="purepecha",
-        target_col="english",
+        source_col=source_col,
+        target_col=target_col,
         model_name=model_name,
-        output_dir=os.path.join(config.CHECKPOINT_DIR, 'llm')
+        output_dir=os.path.join(config.CHECKPOINT_DIR, f"{direction}_llm")
     )
     
     return model, None  # No metrics in the same format as other models
@@ -284,7 +293,8 @@ def main(args):
         val_split=config.VAL_SPLIT,
         test_split=config.TEST_SPLIT,
         batch_size=config.BATCH_SIZE,
-        random_seed=config.RANDOM_SEED
+        random_seed=config.RANDOM_SEED,
+        direction=args.direction
     )
     
     # Load the original data as DataFrame for LLM fine-tuning - using the same format handling as data_utils
@@ -339,7 +349,7 @@ def main(args):
         models["Transformer"], _ = train_transformer_model(data_loaders, device)
     
     if (args.llm or args.all) and LLM_AVAILABLE:
-        llm_model, _ = train_llm_model(df, device)
+        llm_model, _ = train_llm_model(df, device, direction=args.direction)
         # Note: LLM model is not included in comparison due to different API
     elif args.llm:
         print("Cannot train LLM model: dependencies not available")
@@ -354,15 +364,15 @@ def main(args):
         results = compare_models(
             models=models,
             test_loader=data_loaders["test_loader"],
-            target_vocab=data_loaders["english_vocab"],
+            target_vocab=data_loaders["target_vocab"],
             device=device
         )
         
         # Plot comparison
-        plot_comparison(results, save_path="results/model_comparison.png")
+        plot_comparison(results, save_path=f"results/{args.direction}_model_comparison.png")
         
         # Save results to JSON
-        with open("results/model_comparison.json", 'w') as f:
+        with open(f"results/{args.direction}_model_comparison.json", 'w') as f:
             # Convert values to serializable format
             serializable_results = {}
             for model_name, metrics in results.items():
@@ -382,7 +392,7 @@ def main(args):
             
             json.dump(serializable_results, f, indent=4)
         
-        print(f"Results saved to results/model_comparison.json and results/model_comparison.png")
+        print(f"Results saved to results/{args.direction}_model_comparison.json and results/{args.direction}_model_comparison.png")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Purépecha-English translation using neural network models')
@@ -395,6 +405,8 @@ if __name__ == "__main__":
     parser.add_argument('--transformer', action='store_true', help='Train Transformer model')
     parser.add_argument('--llm', action='store_true', help='Fine-tune LLM model')
     parser.add_argument('--all', action='store_true', help='Train all models')
+    parser.add_argument('--direction', type=str, choices=['en2pur', 'pur2en'], default='en2pur', 
+                       help='Translation direction: en2pur (English to Purépecha) or pur2en (Purépecha to English)')
     
     args = parser.parse_args()
     

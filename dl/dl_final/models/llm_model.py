@@ -406,14 +406,14 @@ class LLMTranslationModel:
             self.tokenizer.src_lang = "en_XX"  # Use English as proxy for Purépecha
             self.tokenizer.tgt_lang = "en_XX"
 
-def fine_tune_llm(dataframe, source_col="purepecha", target_col="english", model_name="t5-small", output_dir="results/llm"):
+def fine_tune_llm(dataframe, source_col="english", target_col="purepecha", model_name="t5-small", output_dir="results/llm"):
     """
     Fine-tune an LLM for translation.
     
     Args:
         dataframe: Pandas DataFrame with source and target texts
-        source_col: Column name for source texts
-        target_col: Column name for target texts
+        source_col: Column name for source texts (English)
+        target_col: Column name for target texts (Purépecha)
         model_name: HuggingFace model name
         output_dir: Directory to save results
         

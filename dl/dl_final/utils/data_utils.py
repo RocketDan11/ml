@@ -160,7 +160,7 @@ def collate_fn(batch):
         "target_text": target_text
     }
 
-def load_data(file_path, train_split=1.0, val_split=1.0, test_split=1.0, batch_size=64, random_seed=42):
+def load_data(file_path, train_split=1.0, val_split=1.0, test_split=1.0, batch_size=64, random_seed=42, direction='en2pur'):
     """
     Load and preprocess translation data.
     
@@ -171,6 +171,7 @@ def load_data(file_path, train_split=1.0, val_split=1.0, test_split=1.0, batch_s
         test_split: Proportion of data to use for testing (1.0 to use full dataset)
         batch_size: Batch size for DataLoader
         random_seed: Random seed for reproducibility
+        direction: Translation direction, either 'en2pur' (English to Purépecha) or 'pur2en' (Purépecha to English)
         
     Returns:
         Dictionary with DataLoaders and vocabularies
@@ -237,16 +238,30 @@ def load_data(file_path, train_split=1.0, val_split=1.0, test_split=1.0, batch_s
     print(f"Purépecha vocabulary size: {len(purepecha_vocab)}")
     print(f"English vocabulary size: {len(english_vocab)}")
     
+    # Set source and target based on translation direction
+    if direction == 'en2pur':
+        print("Translation direction: English → Purépecha")
+        source_vocab = english_vocab
+        target_vocab = purepecha_vocab
+        source_col = "english"
+        target_col = "purepecha"
+    else:  # pur2en
+        print("Translation direction: Purépecha → English")
+        source_vocab = purepecha_vocab
+        target_vocab = english_vocab
+        source_col = "purepecha"
+        target_col = "english"
+    
     # Create datasets
     print("Creating datasets...")
     train_dataset = TranslationDataset(
-        train_df, purepecha_vocab, english_vocab, "purepecha", "english"
+        train_df, source_vocab, target_vocab, source_col, target_col
     )
     val_dataset = TranslationDataset(
-        val_df, purepecha_vocab, english_vocab, "purepecha", "english"
+        val_df, source_vocab, target_vocab, source_col, target_col
     )
     test_dataset = TranslationDataset(
-        test_df, purepecha_vocab, english_vocab, "purepecha", "english"
+        test_df, source_vocab, target_vocab, source_col, target_col
     )
     
     # Create data loaders
@@ -269,5 +284,8 @@ def load_data(file_path, train_split=1.0, val_split=1.0, test_split=1.0, batch_s
         "english_vocab": english_vocab,
         "train_dataset": train_dataset,
         "val_dataset": val_dataset,
-        "test_dataset": test_dataset
+        "test_dataset": test_dataset,
+        "source_vocab": source_vocab,
+        "target_vocab": target_vocab,
+        "direction": direction
     }

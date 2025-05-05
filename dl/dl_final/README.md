@@ -54,6 +54,15 @@ To train specific models:
 python main.py --lstm --transformer  # Train only LSTM and Transformer models
 ```
 
+### Translation Direction
+
+You can specify the translation direction using the `--direction` parameter:
+
+```bash
+python main.py --all --direction en2pur  # English to Purépecha (default)
+python main.py --all --direction pur2en  # Purépecha to English
+```
+
 Available options:
 - `--lstm`: Train LSTM RNN model
 - `--gru`: Train GRU RNN model
@@ -62,6 +71,7 @@ Available options:
 - `--transformer`: Train Transformer model
 - `--llm`: Fine-tune LLM model
 - `--all`: Train all models (default if no options provided)
+- `--direction`: Translation direction, either `en2pur` (English to Purépecha, default) or `pur2en` (Purépecha to English)
 
 ## Model Evaluation
 
@@ -75,6 +85,16 @@ Results are saved in the `results/` directory:
 - Training and validation metrics for each model
 - Attention visualizations for attention-based models
 - Model comparison results and visualization
+
+Results are organized by translation direction, with filenames prefixed with the direction (e.g., `en2pur_model_comparison.json` or `pur2en_model_comparison.png`).
+
+## Translation Direction and BLEU Scores
+
+It's important to note that BLEU scores may differ significantly between translation directions:
+- Translating from English to Purépecha (en2pur) typically produces lower BLEU scores as Purépecha is a morphologically complex language with fewer computational resources.
+- Translating from Purépecha to English (pur2en) often results in higher BLEU scores due to English being a resource-rich language with simpler morphology.
+
+Comparing performance in both directions provides a more comprehensive evaluation of model capabilities.
 
 ## Customization
 
@@ -90,7 +110,7 @@ Model hyperparameters and training settings can be modified in the `config.py` f
 
 ## Results
 
-After training, the models are compared based on their performance metrics. The comparison results are saved in `results/model_comparison.json` and visualized in `results/model_comparison.png`.
+After training, the models are compared based on their performance metrics. The comparison results are saved in `results/{direction}_model_comparison.json` and visualized in `results/{direction}_model_comparison.png`, where `{direction}` is either `en2pur` or `pur2en`.
 
 ## References
 

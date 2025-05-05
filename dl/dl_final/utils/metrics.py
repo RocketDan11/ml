@@ -234,8 +234,8 @@ def visualize_attention(model, sentence, source_vocab, target_vocab, device, sav
     Args:
         model: Trained translation model with attention
         sentence: Source sentence to translate
-        source_vocab: Source vocabulary
-        target_vocab: Target vocabulary
+        source_vocab: Source vocabulary (English)
+        target_vocab: Target vocabulary (Purépecha)
         device: Device to run inference on
         save_path: Path to save the visualization
     """
