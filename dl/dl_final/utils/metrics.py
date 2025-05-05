@@ -40,17 +40,22 @@ def evaluate_model_bleu(model, data_loader, target_vocab, device):
     model.eval()
     total_bleu = 0
     samples = []
+    sample_count = 0
     
     with torch.no_grad():
         for batch in tqdm(data_loader, desc="Calculating BLEU"):
             src = batch["source"].to(device)
             src_lengths = batch["source_lengths"].to(device)
             
-            # Generate translations
-            batch_translations = model.translate_batch(src, src_lengths)
-            
-            # Process each translation in the batch
-            for i, translation in enumerate(batch_translations):
+            # Process each sample in the batch separately to avoid batch processing issues
+            for i in range(src.size(0)):
+                # Get individual sample
+                single_src = src[i:i+1]
+                single_src_length = src_lengths[i:i+1]
+                
+                # Generate translation
+                translation = model.translate(single_src, single_src_length)
+                
                 # Get reference translation (actual target)
                 reference = batch["target_text"][i].split()
                 
@@ -66,6 +71,7 @@ def evaluate_model_bleu(model, data_loader, target_vocab, device):
                 # Calculate BLEU score
                 bleu = calculate_bleu(reference, hypothesis)
                 total_bleu += bleu
+                sample_count += 1
                 
                 # Save some samples
                 if len(samples) < 10:
@@ -76,7 +82,7 @@ def evaluate_model_bleu(model, data_loader, target_vocab, device):
                         "bleu": bleu
                     })
     
-    avg_bleu = total_bleu / len(data_loader.dataset)
+    avg_bleu = total_bleu / sample_count
     
     return {
         "bleu": avg_bleu,

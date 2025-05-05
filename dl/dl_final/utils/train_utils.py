@@ -11,6 +11,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from nltk.translate.bleu_score import corpus_bleu
 import random
+import inspect
 
 class Trainer:
     """
@@ -76,8 +77,15 @@ class Trainer:
             # Decide whether to use teacher forcing
             use_teacher_forcing = random.random() < self.teacher_forcing_ratio
             
-            # Forward pass
-            output = self.model(src, src_lengths, trg, use_teacher_forcing)
+            # Forward pass - handle different model parameter names
+            if hasattr(self.model, 'forward') and 'teacher_forcing_ratio' in inspect.signature(self.model.forward).parameters:
+                output = self.model(src, src_lengths, trg, teacher_forcing_ratio=self.teacher_forcing_ratio if use_teacher_forcing else 0.0)
+            else:
+                output = self.model(src, src_lengths, trg, use_teacher_forcing=use_teacher_forcing)
+            
+            # Handle case where output is a tuple (outputs, attention)
+            if isinstance(output, tuple):
+                output = output[0]  # Extract just the output tensor, not the attention weights
             
             # Ignore padding tokens in the target
             # Output shape: [batch_size, trg_len - 1, output_dim]
@@ -132,7 +140,14 @@ class Trainer:
                 trg = batch["target"].to(self.device)
                 
                 # Forward pass (without teacher forcing)
-                output = self.model(src, src_lengths, trg, use_teacher_forcing=False)
+                if hasattr(self.model, 'forward') and 'teacher_forcing_ratio' in inspect.signature(self.model.forward).parameters:
+                    output = self.model(src, src_lengths, trg, teacher_forcing_ratio=0.0)
+                else:
+                    output = self.model(src, src_lengths, trg, use_teacher_forcing=False)
+                
+                # Handle case where output is a tuple (outputs, attention)
+                if isinstance(output, tuple):
+                    output = output[0]  # Extract just the output tensor, not the attention weights
                 
                 # Ignore padding tokens in the target
                 output_dim = output.shape[-1]
@@ -156,7 +171,9 @@ class Trainer:
                         all_trg_tokens.append(trg_tokens)
                         
                     # Get predicted tokens
-                    batch_size, trg_len, output_dim = output.view(batch["target"].shape[0], -1, output_dim).shape
+                    batch_size = batch["target"].shape[0]
+                    trg_len = output.shape[0] // batch_size
+                    output_dim = output.shape[-1]
                     preds = output.view(batch_size, trg_len, output_dim).argmax(dim=2)
                     
                     for i in range(batch_size):

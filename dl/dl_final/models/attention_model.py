@@ -488,9 +488,6 @@ class AttentionSeq2Seq(nn.Module):
         self.eval()
         
         with torch.no_grad():
-            # Create mask for attention
-            mask = self.create_mask(src, src_lengths)
-            
             # Encode the source sequence
             if self.rnn_type == 'lstm':
                 encoder_outputs, (hidden, cell) = self.encoder(src, src_lengths)
@@ -498,12 +495,19 @@ class AttentionSeq2Seq(nn.Module):
                 encoder_outputs, hidden = self.encoder(src, src_lengths)
                 cell = None
             
+            # Create mask for attention that matches encoder_outputs dimensions
+            batch_size = encoder_outputs.shape[0]
+            src_len = encoder_outputs.shape[1]
+            mask = torch.zeros(batch_size, src_len, device=self.device)
+            for i, length in enumerate(src_lengths):
+                mask[i, :length] = 1
+            
             # Start with <SOS> token
             input = torch.tensor([[1]], device=self.device)
             
             # Store translation and attention
             translation = [input.item()]
-            all_attention = torch.zeros(max_length, src.shape[1], device=self.device)
+            all_attention = torch.zeros(max_length, src_len, device=self.device)
             
             # Decode one token at a time
             for t in range(1, max_length):
@@ -564,15 +568,19 @@ class AttentionSeq2Seq(nn.Module):
         batch_size = src.shape[0]
         
         with torch.no_grad():
-            # Create mask for attention
-            mask = self.create_mask(src, src_lengths)
-            
             # Encode the source sequences
             if self.rnn_type == 'lstm':
                 encoder_outputs, (hidden, cell) = self.encoder(src, src_lengths)
             else:  # GRU
                 encoder_outputs, hidden = self.encoder(src, src_lengths)
                 cell = None
+            
+            # Create mask for attention that matches encoder_outputs dimensions
+            batch_size = encoder_outputs.shape[0]
+            src_len = encoder_outputs.shape[1]
+            mask = torch.zeros(batch_size, src_len, device=self.device)
+            for i, length in enumerate(src_lengths):
+                mask[i, :length] = 1
             
             # Start with <SOS> token
             input = torch.tensor([[1]] * batch_size, device=self.device)
@@ -615,15 +623,17 @@ class AttentionSeq2Seq(nn.Module):
                 
                 # Update active indices and input
                 active_idxs = new_active_idxs
-                input = pred_tokens[active_idxs].unsqueeze(1)
+                input = pred_tokens[torch.tensor(new_active_idxs) - torch.tensor(active_idxs)[0]].unsqueeze(1)
                 
-                # Update hidden and cell states
-                active_hidden = hidden[:, active_idxs, :]
-                if self.rnn_type == 'lstm':
-                    active_cell = cell[:, active_idxs, :]
+                # Update hidden and cell states for active sequences
+                if new_active_idxs:
+                    indices = torch.tensor(new_active_idxs, device=self.device)
+                    hidden = hidden[:, indices, :]
+                    if self.rnn_type == 'lstm':
+                        cell = cell[:, indices, :]
                 
                 # If all sequences have ended, break
-                if input.shape[0] == 0:
+                if not new_active_idxs:
                     break
         
         return translations
