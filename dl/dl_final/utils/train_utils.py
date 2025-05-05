@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from nltk.translate.bleu_score import corpus_bleu
+from nltk.translate.bleu_score import corpus_bleu, sentence_bleu, SmoothingFunction
 import random
 import inspect
 
@@ -193,10 +193,20 @@ class Trainer:
         # Calculate BLEU score
         bleu_score = 0
         if calculate_bleu and all_trg_tokens and all_pred_tokens:
-            bleu_score = corpus_bleu(
-                list_of_references=[[ref.split()] for ref_list in all_trg_tokens for ref in ref_list],
-                hypotheses=[hyp.split() for hyp_list in all_pred_tokens for hyp in hyp_list]
-            )
+            # Option 1: Use corpus_bleu with smoothing
+            smoothie = SmoothingFunction().method3
+            
+            # Option 2: Use sentence_bleu with averaging
+            bleu_scores = []
+            for i in range(len(all_trg_tokens)):
+                reference = [all_trg_tokens[i][0].split()]
+                hypothesis = all_pred_tokens[i][0].split()
+                # Calculate sentence-level BLEU with smoothing
+                sentence_bleu_score = sentence_bleu(reference, hypothesis, smoothing_function=smoothie)
+                bleu_scores.append(sentence_bleu_score)
+            
+            # Average the sentence-level BLEU scores
+            bleu_score = sum(bleu_scores) / len(bleu_scores) if bleu_scores else 0
             
         return val_loss, bleu_score
     
@@ -365,6 +375,8 @@ def evaluate_bleu(model, test_loader, target_vocab, device):
     model.eval()
     references = []
     hypotheses = []
+    bleu_scores = []
+    smoothie = SmoothingFunction().method3
     
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="Evaluating BLEU"):
@@ -390,7 +402,16 @@ def evaluate_bleu(model, test_loader, target_vocab, device):
                         hypothesis.append(token)
                 
                 hypotheses.append(hypothesis)
+                
+                # Calculate sentence-level BLEU with smoothing
+                sentence_bleu_score = sentence_bleu([reference], hypothesis, smoothing_function=smoothie)
+                bleu_scores.append(sentence_bleu_score)
     
-    # Calculate BLEU score
-    bleu_score = corpus_bleu(references, hypotheses)
-    return bleu_score
+    # Option 1: Calculate corpus-level BLEU with smoothing
+    corpus_bleu_score = corpus_bleu(references, hypotheses, smoothing_function=smoothie)
+    
+    # Option 2: Average the sentence-level BLEU scores
+    avg_sentence_bleu = sum(bleu_scores) / len(bleu_scores) if bleu_scores else 0
+    
+    # Return the average of sentence-level BLEU scores to be consistent with the evaluation method
+    return avg_sentence_bleu

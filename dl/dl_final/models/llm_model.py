@@ -155,10 +155,14 @@ class LLMTranslationModel:
             labels, skip_special_tokens=True
         )
         
-        # Use nltk.bleu to compute BLEU score
-        bleu_score = 0.0
+        # Convert to list of tokens
+        pred_tokens = [pred.split() for pred in decoded_preds]
+        label_tokens = [label.split() for label in decoded_labels]
         
-        # More metrics can be added here
+        # Use nltk.bleu to compute BLEU score with smoothing
+        from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
+        smoothie = SmoothingFunction().method3
+        bleu_score = corpus_bleu([[l] for l in label_tokens], pred_tokens, smoothing_function=smoothie)
         
         return {"bleu": bleu_score}
     
@@ -189,7 +193,7 @@ class LLMTranslationModel:
         Returns:
             Training metrics
         """
-        # Define training arguments
+        # Define training arguments with minimal parameters to avoid compatibility issues
         training_args = Seq2SeqTrainingArguments(
             output_dir=self.output_dir,
             per_device_train_batch_size=batch_size,
@@ -198,13 +202,9 @@ class LLMTranslationModel:
             weight_decay=weight_decay,
             num_train_epochs=num_epochs,
             save_total_limit=2,
-            save_steps=save_steps,
             logging_steps=logging_steps,
-            evaluation_strategy="steps" if val_dataset is not None else "no",
-            save_strategy="steps",
-            load_best_model_at_end=True if val_dataset is not None else False,
             predict_with_generate=True,
-            fp16=True if torch.cuda.is_available() else False,
+            fp16=torch.cuda.is_available(),
             gradient_accumulation_steps=4,
             report_to="none"  # Disable wandb, tensorboard, etc.
         )
@@ -327,7 +327,7 @@ class LLMTranslationModel:
             reference_texts: List of reference translations
             
         Returns:
-            BLEU score
+            Dictionary with BLEU score and translations
         """
         # Get source texts
         if source_texts_key is not None and isinstance(test_dataset, HFDataset):
@@ -338,11 +338,36 @@ class LLMTranslationModel:
         # Translate texts
         translations = self.translate_batch(source_texts)
         
-        # Compute BLEU score
-        # This would use the corpus_bleu function from nltk.translate.bleu_score
-        # or another BLEU score implementation
+        # Compute BLEU score if reference texts are provided
+        bleu_score = 0.0
+        if reference_texts is not None:
+            from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
+            
+            # Tokenize translations and references
+            translations_tokens = [t.split() for t in translations]
+            reference_tokens = [[r.split()] for r in reference_texts]
+            
+            # Apply smoothing
+            smoothie = SmoothingFunction().method3
+            bleu_score = corpus_bleu(reference_tokens, translations_tokens, smoothing_function=smoothie)
+            
+            print(f"\nBLEU Score for LLM model: {bleu_score:.4f}")
+            
+            # Print some example translations
+            num_examples = min(5, len(translations))
+            print("\nExample translations:")
+            for i in range(num_examples):
+                print(f"Source: {source_texts[i]}")
+                print(f"Reference: {reference_texts[i]}")
+                print(f"Translation: {translations[i]}")
+                print("---")
         
-        return translations
+        return {
+            "bleu": bleu_score,
+            "translations": translations,
+            "sources": source_texts[:10],
+            "references": reference_texts[:10] if reference_texts is not None else None
+        }
     
     def save(self, path=None):
         """
@@ -430,10 +455,31 @@ def fine_tune_llm(dataframe, source_col="purepecha", target_col="english", model
     )
     
     # Evaluate model
-    translations = model.evaluate_bleu(
+    evaluation_results = model.evaluate_bleu(
         test_dataset=test_df[source_col].tolist(),
         reference_texts=test_df[target_col].tolist()
     )
+    
+    # Save evaluation results
+    import json
+    with open(os.path.join(output_dir, "evaluation_results.json"), 'w') as f:
+        # Create serializable results
+        serializable_results = {
+            "bleu": evaluation_results["bleu"],
+            "example_translations": [
+                {
+                    "source": src,
+                    "reference": ref,
+                    "translation": trans
+                }
+                for src, ref, trans in zip(
+                    evaluation_results["sources"],
+                    evaluation_results["references"],
+                    evaluation_results["translations"][:10]
+                )
+            ]
+        }
+        json.dump(serializable_results, f, indent=4)
     
     # Save model
     model.save()

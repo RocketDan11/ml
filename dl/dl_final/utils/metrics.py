@@ -20,8 +20,8 @@ def calculate_bleu(reference, hypothesis, weights=(0.25, 0.25, 0.25, 0.25)):
     Returns:
         BLEU score
     """
-    # Apply smoothing when hypothesis is too short
-    smoothie = SmoothingFunction().method1
+    # Apply smoothing using method3 to handle cases with no higher n-gram matches
+    smoothie = SmoothingFunction().method3
     return sentence_bleu([reference], hypothesis, weights=weights, smoothing_function=smoothie)
 
 def evaluate_model_bleu(model, data_loader, target_vocab, device):
