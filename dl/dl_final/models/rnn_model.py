@@ -99,15 +99,15 @@ class Encoder(nn.Module):
         hidden_forward = hidden[0:self.num_layers]
         hidden_backward = hidden[self.num_layers:]
         
-        # Combine forward and backward states
-        hidden = torch.cat([
-            hidden_forward,
-            hidden_backward
-        ], dim=2)
+        # Combine forward and backward states - concatenate along last dimension
+        hidden = torch.cat([hidden_forward, hidden_backward], dim=2)
         # hidden: [num_layers, batch_size, hidden_dim * 2]
         
-        # Apply linear layer to combine bidirectional state
-        hidden = self.fc(hidden.transpose(0, 2)).transpose(0, 2)
+        # Apply linear layer - reshape to apply to each layer/batch
+        batch_size = hidden.size(1)
+        hidden_combined = hidden.view(-1, self.hidden_dim * 2)
+        hidden_combined = self.fc(hidden_combined)
+        hidden = hidden_combined.view(self.num_layers, batch_size, self.hidden_dim)
         # hidden: [num_layers, batch_size, hidden_dim]
         
         # For LSTM, we need to do the same for cell state
@@ -115,13 +115,12 @@ class Encoder(nn.Module):
             cell_forward = cell[0:self.num_layers]
             cell_backward = cell[self.num_layers:]
             
-            cell = torch.cat([
-                cell_forward,
-                cell_backward
-            ], dim=2)
+            cell = torch.cat([cell_forward, cell_backward], dim=2)
             # cell: [num_layers, batch_size, hidden_dim * 2]
             
-            cell = self.fc(cell.transpose(0, 2)).transpose(0, 2)
+            cell_combined = cell.view(-1, self.hidden_dim * 2)
+            cell_combined = self.fc(cell_combined)
+            cell = cell_combined.view(self.num_layers, batch_size, self.hidden_dim)
             # cell: [num_layers, batch_size, hidden_dim]
             
             return outputs, (hidden, cell)
@@ -269,7 +268,7 @@ class RNNSeq2Seq(nn.Module):
             if 'weight' in name:
                 nn.init.xavier_uniform_(param)
         
-    def forward(self, src, src_lengths, trg, teacher_forcing_ratio=0.5):
+    def forward(self, src, src_lengths, trg, use_teacher_forcing=None):
         """
         Forward pass of the sequence-to-sequence model.
         
@@ -277,7 +276,7 @@ class RNNSeq2Seq(nn.Module):
             src: Source sequence [batch_size, src_len]
             src_lengths: Lengths of source sequences [batch_size]
             trg: Target sequence [batch_size, trg_len]
-            teacher_forcing_ratio: Probability of using teacher forcing
+            use_teacher_forcing: Whether to use teacher forcing (if None, uses random)
             
         Returns:
             outputs: Sequence of predictions [batch_size, trg_len-1, output_dim]
@@ -303,7 +302,8 @@ class RNNSeq2Seq(nn.Module):
         input = trg[:, 0:1]
         
         # Teacher forcing is applied to the whole batch
-        use_teacher_forcing = random.random() < teacher_forcing_ratio
+        if use_teacher_forcing is None:
+            use_teacher_forcing = random.random() < 0.5
         
         # Decode one token at a time
         for t in range(1, trg_len):

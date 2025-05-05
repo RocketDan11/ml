@@ -54,6 +54,11 @@ class Vocabulary:
         Returns:
             List of tokens
         """
+        # Handle non-string input
+        if not isinstance(text, str):
+            print(f"Warning: non-string input to tokenize: {text} of type {type(text)}")
+            text = str(text)
+            
         text = text.lower()
         tokens = re.findall(r'\b\w+\b|[^\w\s]', text)
         return tokens
@@ -176,7 +181,40 @@ def load_data(file_path, train_split=1.0, val_split=1.0, test_split=1.0, batch_s
     
     # Load data
     print(f"Loading data from {file_path}...")
-    df = pd.read_csv(file_path, sep='\t', header=None, names=['id', 'english', 'purepecha'])
+    df = pd.read_csv(file_path, sep='\t', header=None)
+    
+    # Examine the data to determine the correct columns
+    print(f"Data columns: {df.columns}")
+    print(f"First few rows of data:\n{df.head()}")
+    
+    # Handle different file formats
+    if len(df.columns) == 3:
+        df.columns = ['id', 'english', 'purepecha']
+        print("Using 3-column format: id, english, purepecha")
+    elif len(df.columns) == 2:
+        df.columns = ['english', 'purepecha']
+        print("Using 2-column format: english, purepecha")
+        # Add an ID column
+        df['id'] = range(1, len(df) + 1)
+    else:
+        print(f"Warning: Unexpected number of columns: {len(df.columns)}")
+        # Try to make the best guess
+        if len(df.columns) >= 3:
+            df = df.iloc[:, :3]
+            df.columns = ['id', 'english', 'purepecha']
+            print("Assuming first 3 columns are: id, english, purepecha")
+        else:
+            raise ValueError(f"Cannot determine dataset format with {len(df.columns)} columns")
+    
+    # Ensure all text columns are strings
+    for col in ['english', 'purepecha']:
+        df[col] = df[col].astype(str)
+        
+    # Check for NaN or missing values
+    if df['english'].isna().any() or df['purepecha'].isna().any():
+        print("Warning: Found NaN values in the dataset")
+        df = df.dropna(subset=['english', 'purepecha'])
+        print(f"After dropping NaN rows, {len(df)} samples remain")
     
     # Shuffle dataframe
     df = df.sample(frac=1, random_state=random_seed).reset_index(drop=True)

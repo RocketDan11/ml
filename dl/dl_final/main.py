@@ -20,7 +20,14 @@ from utils.metrics import compare_models, plot_comparison, visualize_attention
 from models.rnn_model import RNNSeq2Seq
 from models.attention_model import AttentionSeq2Seq
 from models.transformer_model import TransformerSeq2Seq
-from models.llm_model import LLMTranslationModel, fine_tune_llm
+
+# Import LLM model conditionally
+try:
+    from models.llm_model import LLMTranslationModel, fine_tune_llm
+    LLM_AVAILABLE = True
+except ImportError:
+    print("Warning: LLM dependencies not available. LLM model will be disabled.")
+    LLM_AVAILABLE = False
 
 def train_rnn_model(data_loaders, device, use_gru=False):
     """
@@ -53,8 +60,8 @@ def train_rnn_model(data_loaders, device, use_gru=False):
     # Set decoder vocabulary
     model.decoder.vocab = data_loaders["english_vocab"]
     
-    # Print model summary
-    print(model.model_summary((config.BATCH_SIZE, config.MAX_LENGTH), (config.BATCH_SIZE, config.MAX_LENGTH)))
+    # Skip model summary for now to avoid errors
+    print(f"Model created: {model.__class__.__name__} with {sum(p.numel() for p in model.parameters() if p.requires_grad)} trainable parameters")
     
     # Define optimizer and criterion
     optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
@@ -116,8 +123,8 @@ def train_attention_model(data_loaders, device, use_gru=False):
     # Set decoder vocabulary
     model.decoder.vocab = data_loaders["english_vocab"]
     
-    # Print model summary
-    print(model.model_summary((config.BATCH_SIZE, config.MAX_LENGTH), (config.BATCH_SIZE, config.MAX_LENGTH)))
+    # Skip model summary for now to avoid errors
+    print(f"Model created: {model.__class__.__name__} with {sum(p.numel() for p in model.parameters() if p.requires_grad)} trainable parameters")
     
     # Define optimizer and criterion
     optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
@@ -188,8 +195,8 @@ def train_transformer_model(data_loaders, device):
         device=device
     ).to(device)
     
-    # Print model summary
-    print(model.model_summary((config.BATCH_SIZE, config.MAX_LENGTH), (config.BATCH_SIZE, config.MAX_LENGTH)))
+    # Skip model summary for now to avoid errors
+    print(f"Model created: {model.__class__.__name__} with {sum(p.numel() for p in model.parameters() if p.requires_grad)} trainable parameters")
     
     # Define optimizer and criterion
     optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
@@ -250,6 +257,9 @@ def main(args):
     """
     Main function to train and evaluate models.
     """
+    # Use global LLM_AVAILABLE
+    global LLM_AVAILABLE
+    
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -277,13 +287,37 @@ def main(args):
         random_seed=config.RANDOM_SEED
     )
     
-    # Load the original data as DataFrame for LLM fine-tuning
-    df = pd.read_csv(
-        config.DATA_PATH,
-        sep='\t',
-        header=None,
-        names=['id', 'english', 'purepecha']
-    )
+    # Load the original data as DataFrame for LLM fine-tuning - using the same format handling as data_utils
+    df = None
+    if LLM_AVAILABLE:
+        try:
+            df = pd.read_csv(config.DATA_PATH, sep='\t', header=None)
+            
+            # Handle different file formats
+            if len(df.columns) == 3:
+                df.columns = ['id', 'english', 'purepecha']
+            elif len(df.columns) == 2:
+                df.columns = ['english', 'purepecha']
+                df['id'] = range(1, len(df) + 1)
+            else:
+                if len(df.columns) >= 3:
+                    df = df.iloc[:, :3]
+                    df.columns = ['id', 'english', 'purepecha']
+                else:
+                    print("Warning: LLM model will be disabled due to incompatible data format")
+                    LLM_AVAILABLE = False
+            
+            if LLM_AVAILABLE:
+                # Ensure all text columns are strings
+                for col in ['english', 'purepecha']:
+                    df[col] = df[col].astype(str)
+                    
+                # Drop NaN values if present
+                if df['english'].isna().any() or df['purepecha'].isna().any():
+                    df = df.dropna(subset=['english', 'purepecha'])
+        except Exception as e:
+            print(f"Error loading data for LLM: {e}")
+            LLM_AVAILABLE = False
     
     # Create models
     models = {}
@@ -304,9 +338,13 @@ def main(args):
     if args.transformer or args.all:
         models["Transformer"], _ = train_transformer_model(data_loaders, device)
     
-    if args.llm or args.all:
+    if (args.llm or args.all) and LLM_AVAILABLE:
         llm_model, _ = train_llm_model(df, device)
         # Note: LLM model is not included in comparison due to different API
+    elif args.llm:
+        print("Cannot train LLM model: dependencies not available")
+    elif args.all:
+        print("Skipping LLM model: dependencies not available")
     
     # Compare models if multiple models were trained
     if len(models) > 1:
