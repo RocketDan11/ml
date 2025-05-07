@@ -195,6 +195,9 @@ def train_transformer_model(data_loaders, device):
         device=device
     ).to(device)
     
+    # Set decoder vocabulary
+    model.decoder.vocab = data_loaders["target_vocab"]
+    
     # Skip model summary for now to avoid errors
     print(f"Model created: {model.__class__.__name__} with {sum(p.numel() for p in model.parameters() if p.requires_grad)} trainable parameters")
     
